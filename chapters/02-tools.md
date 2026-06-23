@@ -1,5 +1,7 @@
 # 2. 工具系统 — 让模型从"只会说话"变成"能做事"
 
+本章参考代码：[examples/chapter-02/agent.py](../examples/chapter-02/agent.py) · [examples/chapter-02/tools.py](../examples/chapter-02/tools.py)
+
 ## 本章目标
 
 上一章的程序已经可以多轮聊天，但它还不能真正执行任务。
@@ -310,7 +312,7 @@ response
 
 ---
 
-## Step 7：在 `tools.py` 中加入统一分发器
+## Step 7：在 `tools.py` 中加入分发器 + 结果截断
 
 > 文件：`tools.py`
 
@@ -319,12 +321,33 @@ response
 这个"按名字找函数并执行"的逻辑叫**分发器**，放在 `tools.py`：
 
 ```python
+MAX_RESULT_LENGTH = 50000  # 50K 字符上限
+
+
+def _truncate_result(result):
+    """超长结果保留头尾，中间截断"""
+    if len(result) <= MAX_RESULT_LENGTH:
+        return result
+    half = MAX_RESULT_LENGTH // 2
+    return (
+        result[:half]
+        + f"\n\n... ({len(result)} chars total, truncated) ...\n\n"
+        + result[-half:]
+    )
+
+
 def execute_tool(name, args):
     if name == "read_file":
-        return read_file(args["file_path"])
+        return _truncate_result(read_file(args["file_path"]))
 
     return f"Unknown tool: {name}"
 ```
+
+### 为什么要截断工具结果
+
+工具返回的结果会原样塞进消息历史发给模型。如果 `read_file` 读了一个 500KB 的文件，这 500K 文本全部进入上下文窗口，后面的对话就放不下了。
+
+`_truncate_result` 保留头尾各 25K 字符，中间用省略号连接——头部有文件开头（通常是 import 和类定义），尾部有文件结尾（通常是 main 函数），对模型理解文件结构够用了。
 
 调用过程：
 
@@ -333,7 +356,9 @@ execute_tool("read_file", {"file_path": "agent.py"})
     ↓
 read_file("agent.py")
     ↓
-返回文件内容
+_truncate_result(文件内容)
+    ↓
+返回（可能截断的）文件内容
 ```
 
 ### 为什么不把 if/elif 写在 `agent.py` 里
@@ -537,13 +562,34 @@ handler(**args)
 
 ---
 
-### 参考代码
+### 完整参考代码
 
 自己先写，卡住了再看。
 
-#### 工具定义
+#### tools.py（完整文件）
 
 ```python
+import os
+import subprocess
+
+
+# ── 工具定义（给模型看的说明书）──
+
+read_file_tool = {
+    "name": "read_file",
+    "description": "读取文件内容",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "file_path": {
+                "type": "string",
+                "description": "要读取的文件路径",
+            }
+        },
+        "required": ["file_path"],
+    },
+}
+
 list_files_tool = {
     "name": "list_files",
     "description": "列出目录中的文件和子目录",
@@ -634,13 +680,17 @@ run_shell_tool = {
         "required": ["command"],
     },
 }
-```
 
-#### 执行函数
 
-```python
-import os
-import subprocess
+# ── 执行函数（真正干活的代码）──
+
+def read_file(file_path):
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        return f"Error: {e}"
+
 
 def list_files(path="."):
     try:
@@ -649,6 +699,7 @@ def list_files(path="."):
     except Exception as e:
         return f"Error: {e}"
 
+
 def write_file(file_path, content):
     try:
         with open(file_path, "w", encoding="utf-8") as f:
@@ -656,6 +707,7 @@ def write_file(file_path, content):
         return f"Successfully wrote to {file_path}"
     except Exception as e:
         return f"Error: {e}"
+
 
 def edit_file(file_path, old_string, new_string):
     try:
@@ -673,6 +725,7 @@ def edit_file(file_path, old_string, new_string):
     except Exception as e:
         return f"Error: {e}"
 
+
 def grep_search(pattern, path="."):
     try:
         result = subprocess.run(
@@ -684,6 +737,7 @@ def grep_search(pattern, path="."):
         return result.stdout[:5000] or "No matches found."
     except Exception as e:
         return f"Error: {e}"
+
 
 def run_shell(command):
     try:
@@ -698,11 +752,24 @@ def run_shell(command):
         return "Error: command timed out"
     except Exception as e:
         return f"Error: {e}"
-```
 
-#### 升级后的 execute_tool 和 tool_definitions
 
-```python
+# ── 分发器 + 结果截断 ──
+
+MAX_RESULT_LENGTH = 50000
+
+
+def _truncate_result(result):
+    if len(result) <= MAX_RESULT_LENGTH:
+        return result
+    half = MAX_RESULT_LENGTH // 2
+    return (
+        result[:half]
+        + f"\n\n... ({len(result)} chars total, truncated) ...\n\n"
+        + result[-half:]
+    )
+
+
 def execute_tool(name, args):
     handlers = {
         "read_file": read_file,
@@ -716,9 +783,10 @@ def execute_tool(name, args):
     if handler is None:
         return f"Unknown tool: {name}"
     try:
-        return handler(**args)
+        return _truncate_result(handler(**args))
     except Exception as e:
         return f"Error: {e}"
+
 
 tool_definitions = [
     read_file_tool,
@@ -728,6 +796,69 @@ tool_definitions = [
     grep_search_tool,
     run_shell_tool,
 ]
+```
+
+#### agent.py（完整文件）
+
+```python
+import anthropic
+import os
+from tools import tool_definitions, execute_tool
+
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+client = anthropic.Anthropic(
+    base_url=os.environ.get("ANTHROPIC_BASE_URL"),
+    api_key=os.environ["DEEPSEEK_API_KEY"],
+)
+context = []
+
+while True:
+    user_input = input("> ")
+    if user_input == "exit":
+        break
+
+    context.append({"role": "user", "content": [{"type": "text", "text": user_input}]})
+
+    while True:
+        response = client.messages.create(
+            model="claude-sonnet-4.6",
+            max_tokens=4096,
+            system="You are a helpful assistant",
+            messages=context,
+            tools=tool_definitions,
+        )
+
+        assistant_content = []
+        tool_results = []
+
+        for block in response.content:
+            if block.type == "text":
+                print(block.text)
+                assistant_content.append({
+                    "type": "text",
+                    "text": block.text,
+                })
+            elif block.type == "tool_use":
+                assistant_content.append({
+                    "type": "tool_use",
+                    "id": block.id,
+                    "name": block.name,
+                    "input": block.input,
+                })
+                result = execute_tool(block.name, block.input)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": result,
+                })
+
+        context.append({"role": "assistant", "content": assistant_content})
+
+        if tool_results:
+            context.append({"role": "user", "content": tool_results})
+        else:
+            break
 ```
 
 ---
@@ -742,19 +873,15 @@ tool_definitions = [
 
 ---
 
-## 完整参考代码
+## 本章暂时省略的能力
 
-这一章对应两个同目录文件：
+| 省略了什么 | 为什么省略 | 哪一章补回 | 补回后对齐参考实现的哪个能力 |
+|---|---|---|---|
+| read-before-edit / mtime 保护 | `edit_file` 当前只做唯一性检查。参考实现还会记录文件的读取时间（mtime），编辑前检查文件是否被外部修改过，防止覆盖他人改动 | Ch6 Permissions | `tools.py` 的 `readFileState` + mtime 检测 |
+| 引号规范化（curly quote tolerance） | 模型有时会输出中文引号 `""` 而不是 ASCII 直引号 `""`，导致 `old_string` 匹配不到。参考实现有 `_find_actual_string` 做容错 | 可作为 Ch2 进阶练习 | `tools.py` 的 `_find_actual_string()` |
+| WebFetch 工具 | 网页抓取 + HTML 剥离，核心工具链不依赖它 | 按需补入 | `tools.py` 的 `web_fetch()` |
+| ToolSearch / 延迟加载 | 工具少时不需要延迟加载机制 | Ch9 Skills 或按需 | `tools.py` 的 deferred tools 机制 |
 
-- [`examples/chapter-02/agent.py`](../examples/chapter-02/agent.py)：两层 Agent Loop、block 分拣、工具结果回传
-- [`examples/chapter-02/tools.py`](../examples/chapter-02/tools.py)：工具定义、执行函数和统一分发器
-
-参考代码由本仓库重新实现，不复用原教程仓库的 Python 文件。先在该目录设置 API Key，再运行：
-
-```bash
-cd examples/chapter-02
-export DEEPSEEK_API_KEY="your-api-key"
-python agent.py
-```
+---
 
 > **下一章**：工具定义了 Agent 的能力，System Prompt 定义了 Agent 应该怎样使用这些能力。

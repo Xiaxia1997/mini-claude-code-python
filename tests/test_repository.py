@@ -9,18 +9,23 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_chapter_files_exist() -> None:
     assert (ROOT / "chapters/01-agent-loop.md").is_file()
     assert (ROOT / "chapters/02-tools.md").is_file()
+    assert (ROOT / "chapters/03-system-prompt.md").is_file()
 
 
 def test_readme_links_to_both_chapters() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "./chapters/01-agent-loop.md" in readme
     assert "./chapters/02-tools.md" in readme
+    assert "./chapters/03-system-prompt.md" in readme
 
 
 def test_reference_example_files_exist() -> None:
     assert (ROOT / "examples/chapter-01/agent.py").is_file()
     assert (ROOT / "examples/chapter-02/agent.py").is_file()
     assert (ROOT / "examples/chapter-02/tools.py").is_file()
+    assert (ROOT / "examples/chapter-03/agent.py").is_file()
+    assert (ROOT / "examples/chapter-03/tools.py").is_file()
+    assert (ROOT / "examples/chapter-03/prompt.py").is_file()
 
 
 def test_old_nested_chapter_layout_is_removed() -> None:
@@ -32,10 +37,14 @@ def test_old_nested_chapter_layout_is_removed() -> None:
 def test_chapters_link_to_matching_reference_files() -> None:
     chapter_1 = (ROOT / "chapters/01-agent-loop.md").read_text(encoding="utf-8")
     chapter_2 = (ROOT / "chapters/02-tools.md").read_text(encoding="utf-8")
+    chapter_3 = (ROOT / "chapters/03-system-prompt.md").read_text(encoding="utf-8")
 
     assert "../examples/chapter-01/agent.py" in chapter_1
     assert "../examples/chapter-02/agent.py" in chapter_2
     assert "../examples/chapter-02/tools.py" in chapter_2
+    assert "../examples/chapter-03/agent.py" in chapter_3
+    assert "../examples/chapter-03/tools.py" in chapter_3
+    assert "../examples/chapter-03/prompt.py" in chapter_3
 
 
 def test_license_preserves_original_attribution() -> None:

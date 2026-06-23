@@ -6,7 +6,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![DeepSeek API](https://img.shields.io/badge/DeepSeek_API-low--cost_ready-4D6BFE?style=flat-square)](https://api-docs.deepseek.com/guides/anthropic_api)
-[![Progress](https://img.shields.io/badge/Progress-Chapter_2_complete-22C55E?style=flat-square)](./chapters/02-tools.md)
+[![Progress](https://img.shields.io/badge/Progress-Chapter_3_complete-22C55E?style=flat-square)](./chapters/03-system-prompt.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](./LICENSE)
 
 [开始阅读](./chapters/01-agent-loop.md) ·
@@ -21,7 +21,7 @@
 
 读一百遍各种解读，不如自己动手实践。
 
-这个项目：**不用 LangChain、LangGraph 等 Agent 框架，从最小 Python 实现开始，逐章写出一个Code Agent**
+这个项目：**不用 LangChain、LangGraph 等 Agent 框架，从最小 Python 实现开始，逐章写出一个 Code Agent**
 
 ```text
 多轮对话 → 工具调用 → 会话 → 流式输出 → 权限
@@ -70,6 +70,8 @@ client = anthropic.Anthropic(
   [阅读教程](./chapters/01-agent-loop.md) · [查看 `agent.py`](./examples/chapter-01/agent.py)
 - ✅ **Chapter 2 · Tools**：`read_file`、工具结果回传和两层 Agent Loop<br>
   [阅读教程](./chapters/02-tools.md) · [查看 `agent.py`](./examples/chapter-02/agent.py) · [查看 `tools.py`](./examples/chapter-02/tools.py)
+- ✅ **Chapter 3 · System Prompt**：静态规则、运行时上下文、`CLAUDE.md` 项目指令和 Git 信息<br>
+  [阅读教程](./chapters/03-system-prompt.md) · [查看 `prompt.py`](./examples/chapter-03/prompt.py) · [查看 `agent.py`](./examples/chapter-03/agent.py)
 
 ```bash
 > 我叫小明
@@ -88,7 +90,7 @@ client = anthropic.Anthropic(
 |---|---|:---:|
 | [01 · Agent Loop](./chapters/01-agent-loop.md) | 多轮对话为什么能“记住”上文？ | ✅ |
 | [02 · Tools](./chapters/02-tools.md) | 模型如何从“会说”变成“会做”？ | ✅ |
-| 03 · System Prompt | Agent 如何知道身份、规则和工作目录？ | 计划中 |
+| [03 · System Prompt](./chapters/03-system-prompt.md) | Agent 如何知道身份、规则和工作目录？ | ✅ |
 | 04 · CLI & Session | 对话如何保存、恢复和中断？ | 计划中 |
 | 05 · Streaming | 如何边生成、边显示、边执行？ | 计划中 |
 | 06 · Permissions | 如何避免 Agent 随意执行危险操作？ | 计划中 |
@@ -103,6 +105,7 @@ client = anthropic.Anthropic(
 
 - [`v0.1-agent-loop`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.1-agent-loop)：多轮消息历史
 - [`v0.2-tools`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.2-tools)：`read_file` 与完整工具循环
+- [`v0.3-system-prompt`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.3-system-prompt)：System Prompt、`CLAUDE.md` 与 Git 上下文
 
 ## 不是只看代码，而是理解设计
 
@@ -126,7 +129,7 @@ source .venv/bin/activate
 pip install -e .
 
 export DEEPSEEK_API_KEY="your-api-key"
-cd examples/chapter-02
+cd examples/chapter-03
 python agent.py
 ```
 
@@ -141,12 +144,17 @@ python agent.py
 mini-claude-code-python/
 ├── chapters/               # 逐章教程：原理、消息流、代码与常见错误
 │   ├── 01-agent-loop.md
-│   └── 02-tools.md
+│   ├── 02-tools.md
+│   └── 03-system-prompt.md
 ├── examples/               # 每章独立、可运行的完整参考代码
 │   ├── chapter-01/
 │   │   └── agent.py
-│   └── chapter-02/
+│   ├── chapter-02/
+│   │   ├── agent.py
+│   │   └── tools.py
+│   └── chapter-03/
 │       ├── agent.py
+│       ├── prompt.py
 │       └── tools.py
 └── tests/                  # 编译、链接、版权与密钥检查
 ```
