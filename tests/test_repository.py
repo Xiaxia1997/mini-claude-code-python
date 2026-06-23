@@ -11,6 +11,18 @@ def test_chapter_files_exist() -> None:
     assert (ROOT / "chapters/02-tools/README.md").is_file()
 
 
+def test_readme_links_to_both_chapters() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "./chapters/01-agent-loop/" in readme
+    assert "./chapters/02-tools/" in readme
+
+
+def test_license_preserves_original_attribution() -> None:
+    license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
+    assert "Copyright (c) 2025 Windy3f3f3f3f" in license_text
+    assert "Copyright (c) 2026 Xiaxia1997" in license_text
+
+
 def test_python_sources_compile() -> None:
     for source in (ROOT / "src/mini_claude").glob("*.py"):
         py_compile.compile(str(source), doraise=True)
