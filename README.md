@@ -2,48 +2,132 @@
 
 # Mini Claude Code in Python
 
-**从一次 LLM 调用开始，渐进式构建一个 Coding Agent**
+**不用 Agent 框架，从 30 多行 Python 开始，逐章拆解 Claude Code 背后的核心机制。**
+
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![DeepSeek API](https://img.shields.io/badge/DeepSeek_API-low--cost_ready-4D6BFE?style=flat-square)](https://api-docs.deepseek.com/guides/anthropic_api)
+[![Progress](https://img.shields.io/badge/Progress-Chapter_1_complete-22C55E?style=flat-square)](./chapters/01-agent-loop/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](./LICENSE)
+
+[开始阅读](./chapters/01-agent-loop/) ·
+[查看当前代码](./src/mini_claude/) ·
+[原项目与致谢](#来源与致谢)
 
 </div>
 
-本仓库不是生产级 Agent 框架，而是一份随代码逐章演进的实现笔记。
+---
 
-我们会从最小的多轮对话开始，逐步加入工具调用、System Prompt、会话管理、上下文压缩、记忆和 Sub-Agent。每章包含：
+**Claude Code 能读代码、改文件、跑命令，还能连续完成多步任务。它到底是怎么工作的？**
 
-- 原理拆解：这一层机制解决什么问题
-- 最小实现：先跑通核心路径，再增加工程能力
-- 消息流：模型、工具和程序之间传递了什么
-- 常见错误：哪些写法看起来合理，却会让 Agent Loop 断掉
+真正决定体验的不只是 Claude 模型，还包括模型外面的 Agent Loop、工具调用、上下文管理、权限、记忆与执行环境。
 
-## 当前进度
+生产级 Coding Agent 的实现涉及大量工程细节，直接阅读很容易在入口、事件流和基础设施中迷路。
 
-- [x] Chapter 1：Agent Loop 与多轮消息历史
-- [ ] Chapter 2：工具定义、执行与 tool result 回传
-
-代码会和教程同步演进。当前 `main` 展示最新进度；每完成一个阶段后会增加对应 tag。
-
-## 章节
-
-1. [Agent Loop：从一次 API 调用到多轮对话](./chapters/01-agent-loop/)
-2. [工具系统：让模型从“会说”变成“会做”](./chapters/02-tools/)
-
-## 当前结构
+这个项目换一种方式：**不用 LangChain、LangGraph 等 Agent 框架，从最小 Python 实现开始，逐章理解 Claude Code 需要解决的问题。**
 
 ```text
-mini-claude-code-python/
-├── chapters/
-│   ├── 01-agent-loop/
-│   └── 02-tools/
-├── src/
-│   └── mini_claude/
-│       ├── agent.py
-│       └── tools.py
-└── tests/
+多轮对话 → 工具调用 → 会话 → 流式输出 → 权限
+         → 上下文压缩 → 记忆 → Skills → Sub-Agent → MCP
 ```
+
+每一步都会讲清楚：
+
+- **Claude Code 面临什么问题**：为什么仅仅调用一次 LLM 还不够？
+- **最小版本如何实现**：先用少量 Python 跑通关键消息流。
+- **生产级实现还需要什么**：并行执行、安全边界、恢复和上下文控制。
+
+> 这不是 Claude Code 官方源码的复刻，也不是已经完成的生产级替代品；它是一份随代码逐章演进的学习型实现。
+
+## 没有 Claude API，也能低成本跑起来
+
+理解 Claude Code 的消息循环，不一定要先承担高额 API 试错成本。
+
+DeepSeek 官方提供了 **Anthropic API 兼容接口**。当前代码直接使用 Anthropic Python SDK，只需要换成 DeepSeek 的 `base_url` 和 API Key，就可以练习：
+
+- `messages` 多轮历史
+- thinking / text block 处理
+- `tool_use → tool_result` 回传
+- Agent Loop 的继续与停止条件
+
+```python
+client = anthropic.Anthropic(
+    base_url="https://api.deepseek.com/anthropic",
+    api_key=os.environ["DEEPSEEK_API_KEY"],
+)
+```
+
+这意味着你可以先用 **DeepSeek 的低成本 API** 把 Claude Code 式消息流真正跑通，再决定是否切换到 Claude 模型测试更完整的行为表现。
+
+> [!NOTE]
+> API 格式兼容不等于模型能力、工具行为和 Claude Code 产品体验完全一致。本项目用它降低学习和调试成本，而不是把 DeepSeek 宣传成 Claude 的等价替代。
+
+[DeepSeek Anthropic API 官方文档](https://api-docs.deepseek.com/guides/anthropic_api) ·
+[查看实时价格](https://api-docs.deepseek.com/quick_start/pricing)
+
+## 现在已经能跑什么？
+
+当前 `main` 是一份**随教程逐章演进的实现**：
+
+- ✅ **Chapter 1 · Agent Loop**：API 调用、多轮输入、消息历史、thinking block 过滤
+- 🚧 **Chapter 2 · Tools**：正在加入 `read_file`、工具结果回传和内层循环
+
+```bash
+> 我叫小明
+你好，小明！
+
+> 我叫什么？
+你叫小明。
+```
+
+模型并没有突然获得记忆。程序只是把完整的 `messages` 历史在每一轮重新发给它——这正是 Claude Code 这类 Coding Agent 最基础的一层上下文机制。
+
+## Claude Code 的第一层：Agent Loop
+
+```mermaid
+flowchart LR
+    U["用户输入"] --> M["消息历史 messages"]
+    M --> L["调用 LLM"]
+    L --> D{"返回了什么？"}
+    D -->|text| A["输出答案"]
+    D -->|tool_use| T["Python 执行工具"]
+    T --> R["tool_result 写回消息历史"]
+    R --> L
+    A --> U
+```
+
+模型负责决定下一步，外层程序负责保存上下文、执行工具，并决定循环何时继续。工具、权限、压缩、记忆和 Sub-Agent，都会在这条循环上继续生长。
+
+## 学习路线
+
+| 章节 | 对应的 Claude Code 核心问题 | 状态 |
+|---|---|:---:|
+| [01 · Agent Loop](./chapters/01-agent-loop/) | 多轮对话为什么能“记住”上文？ | ✅ |
+| [02 · Tools](./chapters/02-tools/) | 模型如何从“会说”变成“会做”？ | 🚧 |
+| 03 · System Prompt | Agent 如何知道身份、规则和工作目录？ | 计划中 |
+| 04 · CLI & Session | 对话如何保存、恢复和中断？ | 计划中 |
+| 05 · Streaming | 如何边生成、边显示、边执行？ | 计划中 |
+| 06 · Permissions | 如何避免 Agent 随意执行危险操作？ | 计划中 |
+| 07 · Context | 消息越来越长后如何压缩？ | 计划中 |
+| 08 · Memory | 什么信息值得跨会话保留？ | 计划中 |
+| 09 · Skills | 如何按需加载可复用工作流？ | 计划中 |
+| 10 · Plan Mode | 如何只规划、不修改文件？ | 计划中 |
+| 11 · Sub-Agent | 如何拆分任务并隔离上下文？ | 计划中 |
+| 12 · MCP | 如何连接外部工具服务器？ | 计划中 |
+
+每完成一个阶段都会发布 tag。当前可从 [`v0.1-agent-loop`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.1-agent-loop) 查看第一章对应的代码状态。
+
+## 不是只看代码，而是理解设计
+
+不是只贴一份最终代码。每章会同时回答四件事：
+
+1. **Claude Code 为什么需要这一层**：缺少它时，长任务会在哪里失效？
+2. **消息怎么流动**：模型、Harness 和工具分别拿到了什么？
+3. **最小代码怎么写**：先跑通核心路径，再理解生产级复杂度。
+4. **常见坑是什么**：例如 `response.content[0]` 为什么不一定是文本。
 
 ## 快速开始
 
-需要 Python 3.11 或更高版本。
+需要 Python 3.11 或更高版本，以及一个 DeepSeek API Key。
 
 ```bash
 git clone https://github.com/Xiaxia1997/mini-claude-code-python.git
@@ -59,13 +143,27 @@ python src/mini_claude/agent.py
 
 输入 `exit` 结束对话。
 
-> 代码通过环境变量读取 API Key。不要把真实密钥写进代码、教程或 Git 历史。
+> [!IMPORTANT]
+> 当前示例默认调用 DeepSeek 的 Anthropic 兼容接口。代码通过环境变量读取 API Key，不要把真实密钥写进代码、教程或 Git 历史。
 
-## 这份教程适合谁
+## 项目结构
 
-- 想理解 Code Agent 内部消息流，而不只会调用框架的人
-- 想从 Tool Use 入手理解 Agent Loop 的 Python 开发者
-- 读过 Agent 概念，但还没亲手把循环跑起来的人
+```text
+mini-claude-code-python/
+├── chapters/               # 逐章教程：原理、消息流、代码与常见错误
+│   ├── 01-agent-loop/
+│   └── 02-tools/
+├── src/mini_claude/        # 随章节演进的当前实现
+│   ├── agent.py
+│   └── tools.py
+└── tests/                  # 编译、链接、版权与密钥检查
+```
+
+## 这份教程适合谁？
+
+- 正在使用 Claude Code，但想理解它为什么能连续读写代码的人
+- 想学习 Tool Use，却不想一开始就被框架抽象淹没的人
+- 读过 Agent 概念，但还没有亲手处理 `tool_use → tool_result` 的 Python 开发者
 
 ## 来源与致谢
 
