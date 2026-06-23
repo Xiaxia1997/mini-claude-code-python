@@ -7,14 +7,35 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_chapter_files_exist() -> None:
-    assert (ROOT / "chapters/01-agent-loop/README.md").is_file()
-    assert (ROOT / "chapters/02-tools/README.md").is_file()
+    assert (ROOT / "chapters/01-agent-loop.md").is_file()
+    assert (ROOT / "chapters/02-tools.md").is_file()
 
 
 def test_readme_links_to_both_chapters() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "./chapters/01-agent-loop/" in readme
-    assert "./chapters/02-tools/" in readme
+    assert "./chapters/01-agent-loop.md" in readme
+    assert "./chapters/02-tools.md" in readme
+
+
+def test_reference_example_files_exist() -> None:
+    assert (ROOT / "examples/chapter-01/agent.py").is_file()
+    assert (ROOT / "examples/chapter-02/agent.py").is_file()
+    assert (ROOT / "examples/chapter-02/tools.py").is_file()
+
+
+def test_old_nested_chapter_layout_is_removed() -> None:
+    assert not (ROOT / "chapters/01-agent-loop/README.md").exists()
+    assert not (ROOT / "chapters/02-tools/README.md").exists()
+    assert not (ROOT / "src/mini_claude").exists()
+
+
+def test_chapters_link_to_matching_reference_files() -> None:
+    chapter_1 = (ROOT / "chapters/01-agent-loop.md").read_text(encoding="utf-8")
+    chapter_2 = (ROOT / "chapters/02-tools.md").read_text(encoding="utf-8")
+
+    assert "../examples/chapter-01/agent.py" in chapter_1
+    assert "../examples/chapter-02/agent.py" in chapter_2
+    assert "../examples/chapter-02/tools.py" in chapter_2
 
 
 def test_license_preserves_original_attribution() -> None:
@@ -24,7 +45,7 @@ def test_license_preserves_original_attribution() -> None:
 
 
 def test_python_sources_compile() -> None:
-    for source in (ROOT / "src/mini_claude").glob("*.py"):
+    for source in (ROOT / "examples").rglob("*.py"):
         py_compile.compile(str(source), doraise=True)
 
 

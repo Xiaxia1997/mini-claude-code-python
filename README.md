@@ -2,15 +2,15 @@
 
 # Mini Claude Code in Python
 
-**不用 Agent 框架，从 30 多行 Python 开始，逐章拆解 Claude Code 背后的核心机制。**
+**不用 Agent 框架，从 30 多行 Python 开始，逐章写出一个 Mini Claude Code。**
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![DeepSeek API](https://img.shields.io/badge/DeepSeek_API-low--cost_ready-4D6BFE?style=flat-square)](https://api-docs.deepseek.com/guides/anthropic_api)
-[![Progress](https://img.shields.io/badge/Progress-Chapter_1_complete-22C55E?style=flat-square)](./chapters/01-agent-loop/)
+[![Progress](https://img.shields.io/badge/Progress-Chapter_2_complete-22C55E?style=flat-square)](./chapters/02-tools.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](./LICENSE)
 
-[开始阅读](./chapters/01-agent-loop/) ·
-[查看当前代码](./src/mini_claude/) ·
+[开始阅读](./chapters/01-agent-loop.md) ·
+[查看参考代码](./examples/) ·
 [原项目与致谢](#来源与致谢)
 
 </div>
@@ -23,7 +23,7 @@
 
 生产级 Coding Agent 的实现涉及大量工程细节，直接阅读很容易在入口、事件流和基础设施中迷路。
 
-这个项目换一种方式：**不用 LangChain、LangGraph 等 Agent 框架，从最小 Python 实现开始，逐章理解 Claude Code 需要解决的问题。**
+这个项目换一种方式：**不用 LangChain、LangGraph 等 Agent 框架，从最小 Python 实现开始，逐章写出一个Code Agent**
 
 ```text
 多轮对话 → 工具调用 → 会话 → 流式输出 → 权限
@@ -68,8 +68,10 @@ client = anthropic.Anthropic(
 
 当前 `main` 是一份**随教程逐章演进的实现**：
 
-- ✅ **Chapter 1 · Agent Loop**：API 调用、多轮输入、消息历史、thinking block 过滤
-- 🚧 **Chapter 2 · Tools**：正在加入 `read_file`、工具结果回传和内层循环
+- ✅ **Chapter 1 · Agent Loop**：API 调用、多轮输入、消息历史、thinking block 过滤<br>
+  [阅读教程](./chapters/01-agent-loop.md) · [查看 `agent.py`](./examples/chapter-01/agent.py)
+- ✅ **Chapter 2 · Tools**：`read_file`、工具结果回传和两层 Agent Loop<br>
+  [阅读教程](./chapters/02-tools.md) · [查看 `agent.py`](./examples/chapter-02/agent.py) · [查看 `tools.py`](./examples/chapter-02/tools.py)
 
 ```bash
 > 我叫小明
@@ -81,28 +83,13 @@ client = anthropic.Anthropic(
 
 模型并没有突然获得记忆。程序只是把完整的 `messages` 历史在每一轮重新发给它——这正是 Claude Code 这类 Coding Agent 最基础的一层上下文机制。
 
-## Claude Code 的第一层：Agent Loop
-
-```mermaid
-flowchart LR
-    U["用户输入"] --> M["消息历史 messages"]
-    M --> L["调用 LLM"]
-    L --> D{"返回了什么？"}
-    D -->|text| A["输出答案"]
-    D -->|tool_use| T["Python 执行工具"]
-    T --> R["tool_result 写回消息历史"]
-    R --> L
-    A --> U
-```
-
-模型负责决定下一步，外层程序负责保存上下文、执行工具，并决定循环何时继续。工具、权限、压缩、记忆和 Sub-Agent，都会在这条循环上继续生长。
 
 ## 学习路线
 
 | 章节 | 对应的 Claude Code 核心问题 | 状态 |
 |---|---|:---:|
-| [01 · Agent Loop](./chapters/01-agent-loop/) | 多轮对话为什么能“记住”上文？ | ✅ |
-| [02 · Tools](./chapters/02-tools/) | 模型如何从“会说”变成“会做”？ | 🚧 |
+| [01 · Agent Loop](./chapters/01-agent-loop.md) | 多轮对话为什么能“记住”上文？ | ✅ |
+| [02 · Tools](./chapters/02-tools.md) | 模型如何从“会说”变成“会做”？ | ✅ |
 | 03 · System Prompt | Agent 如何知道身份、规则和工作目录？ | 计划中 |
 | 04 · CLI & Session | 对话如何保存、恢复和中断？ | 计划中 |
 | 05 · Streaming | 如何边生成、边显示、边执行？ | 计划中 |
@@ -114,7 +101,10 @@ flowchart LR
 | 11 · Sub-Agent | 如何拆分任务并隔离上下文？ | 计划中 |
 | 12 · MCP | 如何连接外部工具服务器？ | 计划中 |
 
-每完成一个阶段都会发布 tag。当前可从 [`v0.1-agent-loop`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.1-agent-loop) 查看第一章对应的代码状态。
+每完成一个阶段都会发布 tag：
+
+- [`v0.1-agent-loop`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.1-agent-loop)：多轮消息历史
+- [`v0.2-tools`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.2-tools)：`read_file` 与完整工具循环
 
 ## 不是只看代码，而是理解设计
 
@@ -138,7 +128,8 @@ source .venv/bin/activate
 pip install -e .
 
 export DEEPSEEK_API_KEY="your-api-key"
-python src/mini_claude/agent.py
+cd examples/chapter-02
+python agent.py
 ```
 
 输入 `exit` 结束对话。
@@ -151,11 +142,14 @@ python src/mini_claude/agent.py
 ```text
 mini-claude-code-python/
 ├── chapters/               # 逐章教程：原理、消息流、代码与常见错误
-│   ├── 01-agent-loop/
-│   └── 02-tools/
-├── src/mini_claude/        # 随章节演进的当前实现
-│   ├── agent.py
-│   └── tools.py
+│   ├── 01-agent-loop.md
+│   └── 02-tools.md
+├── examples/               # 每章独立、可运行的完整参考代码
+│   ├── chapter-01/
+│   │   └── agent.py
+│   └── chapter-02/
+│       ├── agent.py
+│       └── tools.py
 └── tests/                  # 编译、链接、版权与密钥检查
 ```
 
