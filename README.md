@@ -19,11 +19,9 @@
 
 **Claude Code 能读代码、改文件、跑命令，还能连续完成多步任务。它到底是怎么工作的？**
 
-真正决定体验的不只是 Claude 模型，还包括模型外面的 Agent Loop、工具调用、上下文管理、权限、记忆与执行环境。
+读一百遍各种解读，不如自己动手实践。
 
-生产级 Coding Agent 的实现涉及大量工程细节，直接阅读很容易在入口、事件流和基础设施中迷路。
-
-这个项目换一种方式：**不用 LangChain、LangGraph 等 Agent 框架，从最小 Python 实现开始，逐章写出一个Code Agent**
+这个项目：**不用 LangChain、LangGraph 等 Agent 框架，从最小 Python 实现开始，逐章写出一个Code Agent**
 
 ```text
 多轮对话 → 工具调用 → 会话 → 流式输出 → 权限
