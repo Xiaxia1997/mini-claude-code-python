@@ -10,6 +10,7 @@ def test_chapter_files_exist() -> None:
     assert (ROOT / "chapters/01-agent-loop.md").is_file()
     assert (ROOT / "chapters/02-tools.md").is_file()
     assert (ROOT / "chapters/03-system-prompt.md").is_file()
+    assert (ROOT / "chapters/04-cli-session.md").is_file()
 
 
 def test_readme_links_to_both_chapters() -> None:
@@ -17,6 +18,7 @@ def test_readme_links_to_both_chapters() -> None:
     assert "./chapters/01-agent-loop.md" in readme
     assert "./chapters/02-tools.md" in readme
     assert "./chapters/03-system-prompt.md" in readme
+    assert "./chapters/04-cli-session.md" in readme
 
 
 def test_reference_example_files_exist() -> None:
@@ -26,6 +28,11 @@ def test_reference_example_files_exist() -> None:
     assert (ROOT / "examples/chapter-03/agent.py").is_file()
     assert (ROOT / "examples/chapter-03/tools.py").is_file()
     assert (ROOT / "examples/chapter-03/prompt.py").is_file()
+    assert (ROOT / "examples/chapter-04/agent.py").is_file()
+    assert (ROOT / "examples/chapter-04/tools.py").is_file()
+    assert (ROOT / "examples/chapter-04/prompt.py").is_file()
+    assert (ROOT / "examples/chapter-04/session.py").is_file()
+    assert (ROOT / "examples/chapter-04/ui.py").is_file()
 
 
 def test_old_nested_chapter_layout_is_removed() -> None:
@@ -38,6 +45,7 @@ def test_chapters_link_to_matching_reference_files() -> None:
     chapter_1 = (ROOT / "chapters/01-agent-loop.md").read_text(encoding="utf-8")
     chapter_2 = (ROOT / "chapters/02-tools.md").read_text(encoding="utf-8")
     chapter_3 = (ROOT / "chapters/03-system-prompt.md").read_text(encoding="utf-8")
+    chapter_4 = (ROOT / "chapters/04-cli-session.md").read_text(encoding="utf-8")
 
     assert "../examples/chapter-01/agent.py" in chapter_1
     assert "../examples/chapter-02/agent.py" in chapter_2
@@ -45,6 +53,11 @@ def test_chapters_link_to_matching_reference_files() -> None:
     assert "../examples/chapter-03/agent.py" in chapter_3
     assert "../examples/chapter-03/tools.py" in chapter_3
     assert "../examples/chapter-03/prompt.py" in chapter_3
+    assert "../examples/chapter-04/agent.py" in chapter_4
+    assert "../examples/chapter-04/tools.py" in chapter_4
+    assert "../examples/chapter-04/prompt.py" in chapter_4
+    assert "../examples/chapter-04/session.py" in chapter_4
+    assert "../examples/chapter-04/ui.py" in chapter_4
 
 
 def test_license_preserves_original_attribution() -> None:

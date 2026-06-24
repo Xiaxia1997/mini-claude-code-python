@@ -1,4 +1,5 @@
 from importlib.util import module_from_spec, spec_from_file_location
+import asyncio
 from pathlib import Path
 import subprocess
 import sys
@@ -41,6 +42,24 @@ def load_chapter_3_prompt():
     return load_module(
         "chapter_03_prompt",
         ROOT / "examples/chapter-03/prompt.py",
+    )
+
+
+def load_chapter_4_agent():
+    chapter_dir = ROOT / "examples/chapter-04"
+    for module_name in ("tools", "prompt", "session", "ui"):
+        sys.modules.pop(module_name, None)
+    sys.path.insert(0, str(chapter_dir))
+    try:
+        return load_module("chapter_04_agent", chapter_dir / "agent.py")
+    finally:
+        sys.path.remove(str(chapter_dir))
+
+
+def load_chapter_4_session():
+    return load_module(
+        "chapter_04_session",
+        ROOT / "examples/chapter-04/session.py",
     )
 
 
@@ -334,3 +353,182 @@ def test_chapter_3_tool_loop_still_returns_tool_result(tmp_path: Path) -> None:
         ],
     }
     assert output == ["读到了 chapter 3"]
+
+
+def test_chapter_4_session_save_load_list_and_latest(
+    tmp_path: Path,
+) -> None:
+    session = load_chapter_4_session()
+    session.SESSION_DIR = tmp_path / "sessions"
+
+    session.save_session(
+        "old",
+        {
+            "metadata": {
+                "id": "old",
+                "startTime": "2026-06-23T09:00:00Z",
+                "messageCount": 1,
+            },
+            "messages": [{"role": "user", "content": "old"}],
+        },
+    )
+    session.save_session(
+        "new",
+        {
+            "metadata": {
+                "id": "new",
+                "startTime": "2026-06-24T09:00:00Z",
+                "messageCount": 2,
+            },
+            "messages": [{"role": "user", "content": "new"}],
+        },
+    )
+    (session.SESSION_DIR / "broken.json").write_text("{", encoding="utf-8")
+
+    assert session.load_session("old")["messages"][0]["content"] == "old"
+    assert session.load_session("missing") is None
+    assert {item["id"] for item in session.list_sessions()} == {"old", "new"}
+    assert session.get_latest_session_id() == "new"
+
+
+def test_chapter_4_agent_uses_async_client_and_auto_saves(monkeypatch) -> None:
+    agent_module = load_chapter_4_agent()
+    calls = []
+    saved = {}
+
+    class FakeMessages:
+        async def create(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(
+                usage=SimpleNamespace(input_tokens=7, output_tokens=11),
+                content=[SimpleNamespace(type="text", text="收到")],
+            )
+
+    fake_client = SimpleNamespace(messages=FakeMessages())
+    monkeypatch.setattr(
+        agent_module.anthropic,
+        "AsyncAnthropic",
+        lambda **kwargs: fake_client,
+    )
+    monkeypatch.setattr(agent_module, "build_system_prompt", lambda: "SYSTEM")
+    monkeypatch.setattr(
+        agent_module,
+        "save_session",
+        lambda session_id, data: saved.update(
+            {"session_id": session_id, "data": data}
+        ),
+    )
+    monkeypatch.setattr(agent_module, "print_assistant_text", lambda text: None)
+
+    agent = agent_module.Agent(
+        api_key="test-key",
+        base_url="https://example.test/anthropic",
+        model="test-model",
+    )
+    asyncio.run(agent.chat("你好"))
+
+    assert calls[0]["model"] == "test-model"
+    assert calls[0]["system"] == "SYSTEM"
+    assert calls[0]["messages"][0]["content"][0]["text"] == "你好"
+    assert agent.total_input_tokens == 7
+    assert agent.total_output_tokens == 11
+    assert saved["session_id"] == agent.session_id
+    assert saved["data"]["metadata"]["messageCount"] == 2
+    assert saved["data"]["metadata"]["totalInputTokens"] == 7
+    assert saved["data"]["metadata"]["totalOutputTokens"] == 11
+
+
+def test_chapter_4_agent_continues_after_tool_result(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    agent_module = load_chapter_4_agent()
+    sample = tmp_path / "sample.txt"
+    sample.write_text("hello from chapter 4", encoding="utf-8")
+    calls = []
+    responses = [
+        SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=5, output_tokens=3),
+            content=[
+                SimpleNamespace(
+                    type="tool_use",
+                    id="toolu_789",
+                    name="read_file",
+                    input={"file_path": str(sample)},
+                )
+            ],
+        ),
+        SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=6, output_tokens=4),
+            content=[SimpleNamespace(type="text", text="读到了 chapter 4")],
+        ),
+    ]
+
+    class FakeMessages:
+        async def create(self, **kwargs):
+            calls.append(kwargs)
+            return responses.pop(0)
+
+    fake_client = SimpleNamespace(messages=FakeMessages())
+    monkeypatch.setattr(
+        agent_module.anthropic,
+        "AsyncAnthropic",
+        lambda **kwargs: fake_client,
+    )
+    monkeypatch.setattr(agent_module, "build_system_prompt", lambda: "SYSTEM")
+    monkeypatch.setattr(agent_module, "save_session", lambda session_id, data: None)
+    monkeypatch.setattr(agent_module, "print_tool_call", lambda name, inp: None)
+    monkeypatch.setattr(agent_module, "print_tool_result", lambda name, result: None)
+    monkeypatch.setattr(agent_module, "print_assistant_text", lambda text: None)
+
+    agent = agent_module.Agent(
+        api_key="test-key",
+        base_url="https://example.test/anthropic",
+        model="test-model",
+    )
+    asyncio.run(agent.chat("读取 sample.txt"))
+
+    assert len(calls) == 2
+    assert agent.messages[2] == {
+        "role": "user",
+        "content": [
+            {
+                "type": "tool_result",
+                "tool_use_id": "toolu_789",
+                "content": "hello from chapter 4",
+            }
+        ],
+    }
+    assert agent.messages[-1]["content"][0]["text"] == "读到了 chapter 4"
+
+
+def test_chapter_4_restore_session_recovers_messages_and_token_counts(
+    monkeypatch,
+) -> None:
+    agent_module = load_chapter_4_agent()
+    monkeypatch.setattr(
+        agent_module.anthropic,
+        "AsyncAnthropic",
+        lambda **kwargs: SimpleNamespace(messages=SimpleNamespace()),
+    )
+    monkeypatch.setattr(agent_module, "build_system_prompt", lambda: "SYSTEM")
+    monkeypatch.setattr(agent_module, "print_info", lambda message: None)
+    agent = agent_module.Agent(api_key="test-key", base_url=None)
+
+    agent.restore_session(
+        {
+            "metadata": {
+                "id": "restored",
+                "startTime": "2026-06-24T10:00:00Z",
+                "totalInputTokens": 12,
+                "totalOutputTokens": 34,
+            },
+            "messages": [{"role": "user", "content": "之前的问题"}],
+        }
+    )
+
+    assert agent.session_id == "restored"
+    assert agent.session_start_time == "2026-06-24T10:00:00Z"
+    assert agent.total_input_tokens == 12
+    assert agent.total_output_tokens == 34
+    assert agent.messages == [{"role": "user", "content": "之前的问题"}]
