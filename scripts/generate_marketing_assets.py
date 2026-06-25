@@ -93,6 +93,47 @@ def draw_terminal(
         y += 35
 
 
+def has_non_ascii(text: str) -> bool:
+    return any(ord(char) > 127 for char in text)
+
+
+def draw_terminal_text(
+    draw: ImageDraw.ImageDraw,
+    xy: tuple[int, int],
+    text: str,
+    size: int,
+    fill: tuple[int, int, int],
+) -> None:
+    """Draw terminal text with a Chinese fallback font to avoid tofu boxes."""
+    selected_font = font(FONT_SANS if has_non_ascii(text) else FONT_MONO, size)
+    draw.text(xy, text, font=selected_font, fill=fill)
+
+
+def draw_agent_welcome(draw: ImageDraw.ImageDraw, x: int, y: int) -> int:
+    """Draw a compact version of the real Chapter 4 welcome panel."""
+    panel = (x, y, x + 730, y + 138)
+    rounded_rectangle(draw, panel, 18, (12, 20, 36), CYAN, 1)
+    draw_terminal_text(draw, (x + 28, y + 22), "Mini Claude Code", 31, CYAN)
+    draw_terminal_text(draw, (x + 28, y + 60), "Chapter 4 - CLI & Session", 20, MUTED)
+    draw_terminal_text(draw, (x + 28, y + 96), "Type your request, or exit to quit.  /clear  /cost", 21, TEXT)
+    return y + 158
+
+
+def draw_tool_panel(
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    title: str,
+    body: str,
+    color: tuple[int, int, int],
+) -> int:
+    panel = (x, y, x + 800, y + 70)
+    rounded_rectangle(draw, panel, 14, (12, 20, 36), color, 1)
+    draw_terminal_text(draw, (x + 22, y + 12), title, 19, MUTED)
+    draw_terminal_text(draw, (x + 22, y + 38), body, 22, color)
+    return y + 84
+
+
 def generate_social_preview() -> Path:
     ASSETS.mkdir(exist_ok=True)
     image = Image.new("RGBA", (1280, 640), BG)
@@ -152,40 +193,55 @@ def generate_social_preview() -> Path:
     return output
 
 
-def draw_demo_frame(
-    progress: int,
-    lines: list[tuple[str, tuple[int, int, int]]],
-) -> Image.Image:
-    image = Image.new("RGBA", (1120, 660), BG)
+def draw_demo_frame(progress: int) -> Image.Image:
+    image = Image.new("RGBA", (1120, 760), BG)
     draw = ImageDraw.Draw(image)
     add_glow(image, (720, -130, 1260, 380), BLUE, 80)
     add_glow(image, (-220, 360, 420, 920), CYAN, 80)
 
-    rounded_rectangle(draw, (48, 42, 1072, 618), 28, CARD_2, (51, 65, 85), 1)
+    rounded_rectangle(draw, (48, 42, 1072, 718), 28, CARD_2, (51, 65, 85), 1)
     draw.ellipse((80, 72, 100, 92), fill=RED)
     draw.ellipse((112, 72, 132, 92), fill=YELLOW)
     draw.ellipse((144, 72, 164, 92), fill=GREEN)
-    draw.text((190, 68), "Mini Claude Code · Chapter 4", font=font(FONT_MONO, 26), fill=MUTED)
+    draw.text((190, 68), "examples/chapter-04", font=font(FONT_MONO, 26), fill=MUTED)
 
-    title = "不用框架，手写Claude Code的消息流"
+    title = "启动 agent.py，看到 Mini Claude Code"
     draw.text((82, 118), title, font=font(FONT_SANS, 34), fill=TEXT)
 
-    mono = font(FONT_MONO, 24)
+    steps = [
+        ("line", "$ python agent.py", GREEN),
+        ("welcome", "", CYAN),
+        ("line", "you > 读tools.py，解释工具执行流程", GREEN),
+        ("tool", "tool call", "read_file -> tools.py", YELLOW),
+        ("tool", "read_file result", "def read_file(...), execute_tool(...)", CYAN),
+        ("line", "assistant > 工具结果会作为 tool_result 回传给模型。", TEXT),
+    ]
+
     y = 178
-    for line, color in lines[:progress]:
-        for wrapped in textwrap.wrap(line, width=66, replace_whitespace=False):
-            draw.text((84, y), wrapped, font=mono, fill=color)
-            y += 34
-        y += 4
+    for step in steps[:progress]:
+        kind = step[0]
+        if kind == "welcome":
+            y = draw_agent_welcome(draw, 84, y)
+            continue
+        if kind == "tool":
+            _, title_text, body, color = step
+            y = draw_tool_panel(draw, 84, y, title_text, body, color)
+            continue
+
+        _, line, color = step
+        for wrapped in textwrap.wrap(line, width=56, replace_whitespace=False):
+            draw_terminal_text(draw, (84, y), wrapped, 25, color)
+            y += 36
+        y += 6
 
     draw.text(
-        (82, 560),
+        (82, 662),
         "Agent Loop / Tool Use / System Prompt / CLI & Session",
         font=font(FONT_SANS, 25),
         fill=(203, 213, 225),
     )
     draw.text(
-        (82, 594),
+        (82, 696),
         "github.com/Xiaxia1997/mini-claude-code-python",
         font=font(FONT_MONO, 21),
         fill=CYAN,
@@ -195,24 +251,18 @@ def draw_demo_frame(
 
 def generate_demo_gif() -> Path:
     ASSETS.mkdir(exist_ok=True)
-    transcript = [
-        ("$ cd examples/chapter-04", GREEN),
-        ("$ python agent.py \"读tools.py，解释工具执行流程\"", GREEN),
-        ("tool call:", MUTED),
-        ("  read_file -> tools.py", YELLOW),
-        ("tool_result: def read_file(...), execute_tool(...)", CYAN),
-        ("Mini Claude Code: save tool_use into messages", TEXT),
-        ("then run local tool and send tool_result back", TEXT),
-        ("$ python agent.py --resume", GREEN),
-        ("Session restored (4 messages).", CYAN),
-        ("OK Resume works: messages are saved by the program.", GREEN),
-    ]
 
     frames: list[Image.Image] = []
     durations: list[int] = []
-    for progress in range(1, len(transcript) + 1):
-        frames.append(draw_demo_frame(progress, transcript))
-        durations.append(600 if progress < len(transcript) else 1600)
+    step_count = 6
+    for progress in range(1, step_count + 1):
+        frames.append(draw_demo_frame(progress))
+        if progress == 2:
+            durations.append(1400)
+        elif progress == step_count:
+            durations.append(1800)
+        else:
+            durations.append(700)
 
     output = ASSETS / "demo.gif"
     frames[0].save(
