@@ -19,11 +19,11 @@
 
 ---
 
-**Claude Code 能读代码、改文件、跑命令，还能连续完成多步任务。它到底是怎么工作的？**
+**Claude Code 到底是怎么工作的？**
 
 读一百遍各种解读，不如自己动手实践。
 
-这个项目：**不用 LangChain、LangGraph 等 Agent 框架，从最小 Python 实现开始，逐章写出一个 Code Agent**
+这个项目：**不用 LangChain、LangGraph 等 Agent 框架，用python手搓一个Code Agent**
 
 ```text
 多轮对话 → 工具调用 → 会话 → 流式输出 → 权限
