@@ -4,6 +4,8 @@
 
 **一点点写出自己的 Mini Claude Code。**
 
+[中文](./README.md) · [English](./README_EN.md)
+
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![DeepSeek API](https://img.shields.io/badge/DeepSeek_API-low--cost_ready-4D6BFE?style=flat-square)](https://api-docs.deepseek.com/guides/anthropic_api)
 [![Progress](https://img.shields.io/badge/Progress-Chapter_4_complete-22C55E?style=flat-square)](./chapters/04-cli-session.md)

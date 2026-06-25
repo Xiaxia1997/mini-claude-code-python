@@ -21,6 +21,20 @@ def test_readme_links_to_both_chapters() -> None:
     assert "./chapters/04-cli-session.md" in readme
 
 
+def test_bilingual_readme_entry_points() -> None:
+    zh_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    en_readme = (ROOT / "README_EN.md").read_text(encoding="utf-8")
+
+    assert "[English](./README_EN.md)" in zh_readme
+    assert "[中文](./README.md)" in en_readme
+    assert "Build Your Own Mini Claude Code in Python" in en_readme
+    assert "Full Chinese tutorials are available now" in en_readme
+    assert "./chapters/01-agent-loop.md" in en_readme
+    assert "./chapters/04-cli-session.md" in en_readme
+    assert "./examples/" in en_readme
+    assert "./assets/demo.gif" in en_readme
+
+
 def test_reference_example_files_exist() -> None:
     assert (ROOT / "examples/chapter-01/agent.py").is_file()
     assert (ROOT / "examples/chapter-02/agent.py").is_file()
