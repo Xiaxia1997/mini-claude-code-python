@@ -13,6 +13,8 @@
 [查看参考代码](./examples/) ·
 [原项目与致谢](#来源与致谢)
 
+![Mini Claude Code demo](./assets/demo.gif)
+
 </div>
 
 ---

@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pillow>=10",
     "pytest>=8",
 ]
 
