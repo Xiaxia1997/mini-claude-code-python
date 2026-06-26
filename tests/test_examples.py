@@ -63,6 +63,49 @@ def load_chapter_4_session():
     )
 
 
+def load_chapter_agent(chapter: str):
+    chapter_dir = ROOT / f"examples/chapter-{chapter}"
+    for module_name in ("tools", "prompt", "session", "ui"):
+        sys.modules.pop(module_name, None)
+    sys.path.insert(0, str(chapter_dir))
+    try:
+        return load_module(f"chapter_{chapter}_agent", chapter_dir / "agent.py")
+    finally:
+        sys.path.remove(str(chapter_dir))
+
+
+def load_chapter_tools(chapter: str):
+    return load_module(
+        f"chapter_{chapter}_tools",
+        ROOT / f"examples/chapter-{chapter}/tools.py",
+    )
+
+
+class FakeStream:
+    def __init__(self, events, final_message):
+        self.events = events
+        self.final_message = final_message
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    def __aiter__(self):
+        self._iter = iter(self.events)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._iter)
+        except StopIteration:
+            raise StopAsyncIteration
+
+    async def get_final_message(self):
+        return self.final_message
+
+
 def test_chapter_1_keeps_only_text_blocks() -> None:
     agent = load_module(
         "chapter_01_agent",
@@ -532,3 +575,196 @@ def test_chapter_4_restore_session_recovers_messages_and_token_counts(
     assert agent.total_input_tokens == 12
     assert agent.total_output_tokens == 34
     assert agent.messages == [{"role": "user", "content": "之前的问题"}]
+
+
+def test_chapter_5_streams_text_before_final_message(monkeypatch) -> None:
+    agent_module = load_chapter_agent("05")
+    printed = []
+    calls = []
+
+    final_message = SimpleNamespace(
+        usage=SimpleNamespace(input_tokens=9, output_tokens=4),
+        content=[SimpleNamespace(type="text", text="hello")],
+    )
+    events = [
+        SimpleNamespace(
+            type="content_block_delta",
+            delta=SimpleNamespace(text="he"),
+        ),
+        SimpleNamespace(
+            type="content_block_delta",
+            delta=SimpleNamespace(text="llo"),
+        ),
+    ]
+
+    class FakeMessages:
+        def stream(self, **kwargs):
+            calls.append(kwargs)
+            return FakeStream(events, final_message)
+
+    fake_client = SimpleNamespace(messages=FakeMessages())
+    monkeypatch.setattr(
+        agent_module.anthropic,
+        "AsyncAnthropic",
+        lambda **kwargs: fake_client,
+    )
+    monkeypatch.setattr(agent_module, "build_system_prompt", lambda: "SYSTEM")
+    monkeypatch.setattr(agent_module, "save_session", lambda session_id, data: None)
+    monkeypatch.setattr(agent_module, "start_spinner", lambda label="Thinking": None)
+    monkeypatch.setattr(agent_module, "stop_spinner", lambda: None)
+    monkeypatch.setattr(agent_module, "print_assistant_text", printed.append)
+
+    agent = agent_module.Agent(api_key="test-key", base_url=None, model="test-model")
+    asyncio.run(agent.chat("hi"))
+
+    assert calls[0]["model"] == "test-model"
+    assert calls[0]["system"] == "SYSTEM"
+    assert "".join(printed).strip() == "hello"
+    assert agent.total_input_tokens == 9
+    assert agent.total_output_tokens == 4
+
+
+def test_chapter_6_detects_dangerous_commands() -> None:
+    tools = load_chapter_tools("06")
+
+    assert tools.is_dangerous("rm -rf /")
+    assert tools.is_dangerous("git push --force")
+    assert tools.is_dangerous("sudo apt install nginx")
+    assert not tools.is_dangerous("ls -la")
+    assert tools.check_permission("read_file", {"file_path": "x.py"}) == {
+        "action": "allow"
+    }
+    assert tools.check_permission("run_shell", {"command": "rm -rf /"}) == {
+        "action": "confirm",
+        "message": "rm -rf /",
+    }
+
+
+def test_chapter_7_budgets_old_tool_results(monkeypatch) -> None:
+    agent_module = load_chapter_agent("07")
+    monkeypatch.setattr(
+        agent_module.anthropic,
+        "AsyncAnthropic",
+        lambda **kwargs: SimpleNamespace(messages=SimpleNamespace()),
+    )
+    monkeypatch.setattr(agent_module, "build_system_prompt", lambda: "SYSTEM")
+
+    agent = agent_module.Agent(api_key="test-key", base_url=None)
+    agent.effective_window = 100
+    agent.last_input_token_count = 75
+    agent.messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_1",
+                    "content": "a" * 40_000,
+                }
+            ],
+        }
+    ]
+
+    agent._budget_tool_results()
+
+    content = agent.messages[0]["content"][0]["content"]
+    assert len(content) < 20_000
+    assert "budgeted" in content
+
+
+def test_chapter_7_snips_stale_duplicate_tool_results(monkeypatch) -> None:
+    agent_module = load_chapter_agent("07")
+    monkeypatch.setattr(
+        agent_module.anthropic,
+        "AsyncAnthropic",
+        lambda **kwargs: SimpleNamespace(messages=SimpleNamespace()),
+    )
+    monkeypatch.setattr(agent_module, "build_system_prompt", lambda: "SYSTEM")
+
+    agent = agent_module.Agent(api_key="test-key", base_url=None)
+    agent.effective_window = 100
+    agent.last_input_token_count = 70
+    agent.messages = [
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_old",
+                    "name": "read_file",
+                    "input": {"file_path": "agent.py"},
+                }
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_old",
+                    "content": "old content",
+                }
+            ],
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_new",
+                    "name": "read_file",
+                    "input": {"file_path": "agent.py"},
+                }
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_new",
+                    "content": "new content",
+                }
+            ],
+        },
+    ]
+
+    agent._snip_stale_results()
+
+    assert "snipped" in agent.messages[1]["content"][0]["content"]
+    assert agent.messages[3]["content"][0]["content"] == "new content"
+
+
+def test_chapter_7_compact_reuses_agent_system_prompt(monkeypatch) -> None:
+    agent_module = load_chapter_agent("07")
+    calls = []
+
+    class FakeMessages:
+        async def create(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(
+                usage=SimpleNamespace(input_tokens=30, output_tokens=8),
+                content=[SimpleNamespace(type="text", text="Summary text.")],
+            )
+
+    fake_client = SimpleNamespace(messages=FakeMessages())
+    monkeypatch.setattr(
+        agent_module.anthropic,
+        "AsyncAnthropic",
+        lambda **kwargs: fake_client,
+    )
+    monkeypatch.setattr(agent_module, "build_system_prompt", lambda: "SYSTEM")
+
+    agent = agent_module.Agent(api_key="test-key", base_url=None)
+    agent.messages = [
+        {"role": "user", "content": [{"type": "text", "text": "旧问题"}]},
+        {"role": "assistant", "content": [{"type": "text", "text": "旧回答"}]},
+    ]
+
+    asyncio.run(agent._compact_conversation())
+
+    assert calls[0]["system"] == "SYSTEM"
+    assert calls[0]["messages"][0]["content"][0]["text"] == "旧问题"
+    assert "Summarize the conversation" in calls[0]["messages"][-1]["content"][0]["text"]
+    assert len(agent.messages) == 3
+    assert "Summary text." in agent.messages[1]["content"][0]["text"]

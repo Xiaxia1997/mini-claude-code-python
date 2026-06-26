@@ -8,7 +8,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![DeepSeek API](https://img.shields.io/badge/DeepSeek_API-low--cost_ready-4D6BFE?style=flat-square)](https://api-docs.deepseek.com/guides/anthropic_api)
-[![Progress](https://img.shields.io/badge/Progress-Chapter_4_complete-22C55E?style=flat-square)](./chapters/04-cli-session.md)
+[![Progress](https://img.shields.io/badge/Progress-Chapter_7_complete-22C55E?style=flat-square)](./chapters/07-context.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](./LICENSE)
 
 [开始阅读](./chapters/01-agent-loop.md) ·
@@ -61,6 +61,12 @@ API 格式兼容不等于模型能力和 Claude Code 产品体验完全一致；
   [阅读教程](./chapters/03-system-prompt.md) · [查看 `prompt.py`](./examples/chapter-03/prompt.py) · [查看 `agent.py`](./examples/chapter-03/agent.py)
 - ✅ **Chapter 4 · CLI & Session**：async Agent 类、REPL 命令、会话保存与 `--resume`<br>
   [阅读教程](./chapters/04-cli-session.md) · [查看 `agent.py`](./examples/chapter-04/agent.py) · [查看 `session.py`](./examples/chapter-04/session.py) · [查看 `ui.py`](./examples/chapter-04/ui.py)
+- ✅ **Chapter 5 · Streaming**：流式输出、spinner 等待动画和 transient error 重试<br>
+  [阅读教程](./chapters/05-streaming.md) · [查看 `agent.py`](./examples/chapter-05/agent.py) · [查看 `ui.py`](./examples/chapter-05/ui.py)
+- ✅ **Chapter 6 · Permissions**：危险命令检测、用户确认和会话内白名单<br>
+  [阅读教程](./chapters/06-permissions.md) · [查看 `agent.py`](./examples/chapter-06/agent.py) · [查看 `tools.py`](./examples/chapter-06/tools.py)
+- ✅ **Chapter 7 · Context**：4 层上下文压缩、重复工具结果 snip 和 `/compact`<br>
+  [阅读教程](./chapters/07-context.md) · [查看 `agent.py`](./examples/chapter-07/agent.py) · [查看 `tools.py`](./examples/chapter-07/tools.py)
 
 ```bash
 > 我叫小明
@@ -81,9 +87,9 @@ API 格式兼容不等于模型能力和 Claude Code 产品体验完全一致；
 | [02 · Tools](./chapters/02-tools.md) | 模型如何从“会说”变成“会做”？ | ✅ |
 | [03 · System Prompt](./chapters/03-system-prompt.md) | Agent 如何知道身份、规则和工作目录？ | ✅ |
 | [04 · CLI & Session](./chapters/04-cli-session.md) | 对话如何保存、恢复和中断？ | ✅ |
-| 05 · Streaming | 如何边生成、边显示、边执行？ | 计划中 |
-| 06 · Permissions | 如何避免 Agent 随意执行危险操作？ | 计划中 |
-| 07 · Context | 消息越来越长后如何压缩？ | 计划中 |
+| [05 · Streaming](./chapters/05-streaming.md) | 如何边生成、边显示、边执行？ | ✅ |
+| [06 · Permissions](./chapters/06-permissions.md) | 如何避免 Agent 随意执行危险操作？ | ✅ |
+| [07 · Context](./chapters/07-context.md) | 消息越来越长后如何压缩？ | ✅ |
 | 08 · Memory | 什么信息值得跨会话保留？ | 计划中 |
 | 09 · Skills | 如何按需加载可复用工作流？ | 计划中 |
 | 10 · Plan Mode | 如何只规划、不修改文件？ | 计划中 |
@@ -96,6 +102,9 @@ API 格式兼容不等于模型能力和 Claude Code 产品体验完全一致；
 - [`v0.2-tools`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.2-tools)：`read_file` 与完整工具循环
 - [`v0.3-system-prompt`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.3-system-prompt)：System Prompt、`CLAUDE.md` 与 Git 上下文
 - [`v0.4-cli-session`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.4-cli-session)：CLI、REPL 命令与会话恢复
+- [`v0.5-streaming`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.5-streaming)：流式输出、spinner 和重试
+- [`v0.6-permissions`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.6-permissions)：权限检查和危险命令确认
+- [`v0.7-context`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.7-context)：4 层上下文压缩和 `/compact`
 
 ## 不是只看代码，而是理解设计
 
@@ -119,7 +128,7 @@ source .venv/bin/activate
 pip install -e .
 
 export DEEPSEEK_API_KEY="your-api-key"
-cd examples/chapter-04
+cd examples/chapter-07
 python agent.py
 ```
 
@@ -136,7 +145,10 @@ mini-claude-code-python/
 │   ├── 01-agent-loop.md
 │   ├── 02-tools.md
 │   ├── 03-system-prompt.md
-│   └── 04-cli-session.md
+│   ├── 04-cli-session.md
+│   ├── 05-streaming.md
+│   ├── 06-permissions.md
+│   └── 07-context.md
 ├── examples/               # 每章独立、可运行的完整参考代码
 │   ├── chapter-01/
 │   │   └── agent.py
@@ -147,7 +159,25 @@ mini-claude-code-python/
 │   │   ├── agent.py
 │   │   ├── prompt.py
 │   │   └── tools.py
-│   └── chapter-04/
+│   ├── chapter-04/
+│   │   ├── agent.py
+│   │   ├── prompt.py
+│   │   ├── session.py
+│   │   ├── tools.py
+│   │   └── ui.py
+│   ├── chapter-05/
+│   │   ├── agent.py
+│   │   ├── prompt.py
+│   │   ├── session.py
+│   │   ├── tools.py
+│   │   └── ui.py
+│   ├── chapter-06/
+│   │   ├── agent.py
+│   │   ├── prompt.py
+│   │   ├── session.py
+│   │   ├── tools.py
+│   │   └── ui.py
+│   └── chapter-07/
 │       ├── agent.py
 │       ├── prompt.py
 │       ├── session.py

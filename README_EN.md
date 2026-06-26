@@ -8,7 +8,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![DeepSeek API](https://img.shields.io/badge/DeepSeek_API-low--cost_ready-4D6BFE?style=flat-square)](https://api-docs.deepseek.com/guides/anthropic_api)
-[![Progress](https://img.shields.io/badge/Progress-Chapter_4_complete-22C55E?style=flat-square)](./chapters/04-cli-session.md)
+[![Progress](https://img.shields.io/badge/Progress-Chapter_7_complete-22C55E?style=flat-square)](./chapters/07-context.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](./LICENSE)
 
 [Start with Chapter 1](./chapters/01-agent-loop.md) ·
@@ -65,6 +65,18 @@ The current `main` branch follows the tutorial chapter by chapter:
   Async agent class, REPL commands, session persistence, and `--resume`.  
   [Read tutorial](./chapters/04-cli-session.md) · [View `agent.py`](./examples/chapter-04/agent.py) · [View `session.py`](./examples/chapter-04/session.py) · [View `ui.py`](./examples/chapter-04/ui.py)
 
+- ✅ **Chapter 5 · Streaming**<br>
+  Streaming text output, spinner feedback, and retry for transient API failures.<br>
+  [Read tutorial](./chapters/05-streaming.md) · [View `agent.py`](./examples/chapter-05/agent.py) · [View `ui.py`](./examples/chapter-05/ui.py)
+
+- ✅ **Chapter 6 · Permissions**<br>
+  Dangerous command detection, user confirmation, and per-session approval memory.<br>
+  [Read tutorial](./chapters/06-permissions.md) · [View `agent.py`](./examples/chapter-06/agent.py) · [View `tools.py`](./examples/chapter-06/tools.py)
+
+- ✅ **Chapter 7 · Context**<br>
+  Four-layer context compression, stale tool-result snipping, and manual `/compact`.<br>
+  [Read tutorial](./chapters/07-context.md) · [View `agent.py`](./examples/chapter-07/agent.py) · [View `tools.py`](./examples/chapter-07/tools.py)
+
 ```bash
 > my name is Ming
 Hello, Ming!
@@ -94,9 +106,9 @@ Compatibility does not mean the model behavior is identical to Claude Code. It i
 | [02 · Tools](./chapters/02-tools.md) | How does a model move from “talking” to “doing”? | ✅ |
 | [03 · System Prompt](./chapters/03-system-prompt.md) | How does an agent know its role, rules, and working directory? | ✅ |
 | [04 · CLI & Session](./chapters/04-cli-session.md) | How can a conversation be saved, resumed, and interrupted? | ✅ |
-| 05 · Streaming | How can output stream while work is still happening? | Planned |
-| 06 · Permissions | How do we stop an agent from doing dangerous things freely? | Planned |
-| 07 · Context | What happens when the message history becomes too long? | Planned |
+| [05 · Streaming](./chapters/05-streaming.md) | How can output stream while work is still happening? | ✅ |
+| [06 · Permissions](./chapters/06-permissions.md) | How do we stop an agent from doing dangerous things freely? | ✅ |
+| [07 · Context](./chapters/07-context.md) | What happens when the message history becomes too long? | ✅ |
 | 08 · Memory | What should survive across sessions? | Planned |
 | 09 · Skills | How can reusable workflows be loaded only when needed? | Planned |
 | 10 · Plan Mode | How can the agent plan without editing files? | Planned |
@@ -109,6 +121,9 @@ Each completed milestone is also tagged:
 - [`v0.2-tools`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.2-tools)
 - [`v0.3-system-prompt`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.3-system-prompt)
 - [`v0.4-cli-session`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.4-cli-session)
+- [`v0.5-streaming`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.5-streaming)
+- [`v0.6-permissions`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.6-permissions)
+- [`v0.7-context`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.7-context)
 
 ## Quick start
 
@@ -126,7 +141,7 @@ source .venv/bin/activate
 pip install -e .
 
 export DEEPSEEK_API_KEY="your-api-key"
-cd examples/chapter-04
+cd examples/chapter-07
 python agent.py
 ```
 
