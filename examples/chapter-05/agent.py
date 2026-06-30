@@ -180,7 +180,7 @@ class Agent:
         async def operation() -> Any:
             async with self.client.messages.stream(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 system=self.system_prompt,
                 messages=self.messages,
                 tools=tool_definitions,
@@ -200,6 +200,9 @@ class Agent:
                         print_assistant_text("\n")
                         first_text = False
                     print_assistant_text(text)
+
+                if not first_text:
+                    print_assistant_text("\n")
 
                 return await stream.get_final_message()
 

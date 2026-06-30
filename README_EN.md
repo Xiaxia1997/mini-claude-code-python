@@ -70,11 +70,11 @@ The current `main` branch follows the tutorial chapter by chapter:
   [Read tutorial](./chapters/05-streaming.md) · [View `agent.py`](./examples/chapter-05/agent.py) · [View `ui.py`](./examples/chapter-05/ui.py)
 
 - ✅ **Chapter 6 · Permissions**<br>
-  Dangerous command detection, user confirmation, and per-session approval memory.<br>
+  Dangerous command detection, user confirmation, per-session approval memory, and read-before-edit protection.<br>
   [Read tutorial](./chapters/06-permissions.md) · [View `agent.py`](./examples/chapter-06/agent.py) · [View `tools.py`](./examples/chapter-06/tools.py)
 
 - ✅ **Chapter 7 · Context**<br>
-  Four-layer context compression, stale tool-result snipping, and manual `/compact`.<br>
+  Context compression, microcompact, stale tool-result snipping, and manual `/compact`.<br>
   [Read tutorial](./chapters/07-context.md) · [View `agent.py`](./examples/chapter-07/agent.py) · [View `tools.py`](./examples/chapter-07/tools.py)
 
 ```bash
@@ -124,6 +124,8 @@ Each completed milestone is also tagged:
 - [`v0.5-streaming`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.5-streaming)
 - [`v0.6-permissions`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.6-permissions)
 - [`v0.7-context`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.7-context)
+- [`v0.6-permissions-r2`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.6-permissions-r2)
+- [`v0.7-context-r2`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.7-context-r2)
 
 ## Quick start
 

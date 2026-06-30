@@ -63,9 +63,9 @@ API 格式兼容不等于模型能力和 Claude Code 产品体验完全一致；
   [阅读教程](./chapters/04-cli-session.md) · [查看 `agent.py`](./examples/chapter-04/agent.py) · [查看 `session.py`](./examples/chapter-04/session.py) · [查看 `ui.py`](./examples/chapter-04/ui.py)
 - ✅ **Chapter 5 · Streaming**：流式输出、spinner 等待动画和 transient error 重试<br>
   [阅读教程](./chapters/05-streaming.md) · [查看 `agent.py`](./examples/chapter-05/agent.py) · [查看 `ui.py`](./examples/chapter-05/ui.py)
-- ✅ **Chapter 6 · Permissions**：危险命令检测、用户确认和会话内白名单<br>
+- ✅ **Chapter 6 · Permissions**：危险命令检测、用户确认、会话内白名单和读前编辑保护<br>
   [阅读教程](./chapters/06-permissions.md) · [查看 `agent.py`](./examples/chapter-06/agent.py) · [查看 `tools.py`](./examples/chapter-06/tools.py)
-- ✅ **Chapter 7 · Context**：4 层上下文压缩、重复工具结果 snip 和 `/compact`<br>
+- ✅ **Chapter 7 · Context**：上下文压缩、Microcompact、重复工具结果 snip 和 `/compact`<br>
   [阅读教程](./chapters/07-context.md) · [查看 `agent.py`](./examples/chapter-07/agent.py) · [查看 `tools.py`](./examples/chapter-07/tools.py)
 
 ```bash
@@ -105,6 +105,8 @@ API 格式兼容不等于模型能力和 Claude Code 产品体验完全一致；
 - [`v0.5-streaming`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.5-streaming)：流式输出、spinner 和重试
 - [`v0.6-permissions`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.6-permissions)：权限检查和危险命令确认
 - [`v0.7-context`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.7-context)：4 层上下文压缩和 `/compact`
+- [`v0.6-permissions-r2`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.6-permissions-r2)：补充读前编辑保护
+- [`v0.7-context-r2`](https://github.com/Xiaxia1997/mini-claude-code-python/tree/v0.7-context-r2)：补充 Microcompact 和上下文压缩修订
 
 ## 不是只看代码，而是理解设计
 

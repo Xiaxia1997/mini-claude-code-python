@@ -574,7 +574,7 @@ python agent.py
 
 ```python
 system = """You are a coding assistant.
-Working directory: /Users/xiaxia/project
+Working directory: /Users/you/project
 Date: 2026-06-23
 This project uses Python 3.13...
 """

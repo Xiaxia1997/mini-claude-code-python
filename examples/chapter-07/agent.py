@@ -1,4 +1,4 @@
-"""Chapter 7 reference: context budget, stale snip, and compact."""
+"""Chapter 7 reference: context budgeting, microcompact, and compact."""
 
 from __future__ import annotations
 
@@ -38,9 +38,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 T = TypeVar("T")
 SNIPPABLE_TOOLS = {"read_file", "grep_search", "list_files", "run_shell"}
 SNIP_PLACEHOLDER = "[Content snipped - newer result is available later]"
-KEEP_RECENT_TOOL_RESULTS = 1
+KEEP_RECENT_TOOL_RESULTS = 3
 DEFAULT_MODEL_WINDOW = 1_000_000
 RESERVED_OUTPUT_TOKENS = 50_000
+MICROCOMPACT_IDLE_SECONDS = 5 * 60
+MICROCOMPACT_KEEP_RECENT_RESULTS = 5
+OLD_TOOL_RESULT_PLACEHOLDER = "[Old tool result content cleared]"
 
 
 def response_usage(response: Any) -> tuple[int, int]:
@@ -149,6 +152,9 @@ class Agent:
         self.last_input_token_count = 0
         self.yolo = yolo
         self._confirmed_commands: set[str] = set()
+        self._read_file_state: dict[str, float] = {}
+        self.last_api_call_time: float | None = None
+        self.global_summary = ""
         self.session_id = uuid.uuid4().hex[:8]
         self.session_start_time = time.strftime(
             "%Y-%m-%dT%H:%M:%SZ",
@@ -165,7 +171,9 @@ class Agent:
         )
 
         while True:
+            self._microcompact_tool_results()
             self._run_compression_pipeline()
+            await self._check_and_compact()
             start_spinner()
             try:
                 response = await self._call_stream()
@@ -176,6 +184,7 @@ class Agent:
             self.last_input_token_count = input_tokens
             self.total_input_tokens += input_tokens
             self.total_output_tokens += output_tokens
+            self.last_api_call_time = time.time()
 
             content = assistant_content(response.content)
             self.messages.append({"role": "assistant", "content": content})
@@ -186,8 +195,33 @@ class Agent:
 
             self.messages.append({"role": "user", "content": tool_results})
 
-        await self._check_and_compact()
         self._auto_save()
+
+    def _microcompact_tool_results(self) -> None:
+        """Clear old tool_result bodies after the cache is likely cold."""
+        if self.last_api_call_time is None:
+            return
+
+        if time.time() - self.last_api_call_time < MICROCOMPACT_IDLE_SECONDS:
+            return
+
+        positions: list[tuple[int, int]] = []
+        for msg_idx, msg in enumerate(self.messages):
+            if msg.get("role") != "user" or not isinstance(msg.get("content"), list):
+                continue
+            for block_idx, block in enumerate(msg["content"]):
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_result"
+                    and isinstance(block.get("content"), str)
+                    and block["content"] != OLD_TOOL_RESULT_PLACEHOLDER
+                ):
+                    positions.append((msg_idx, block_idx))
+
+        for msg_idx, block_idx in positions[:-MICROCOMPACT_KEEP_RECENT_RESULTS]:
+            self.messages[msg_idx]["content"][block_idx]["content"] = (
+                OLD_TOOL_RESULT_PLACEHOLDER
+            )
 
     def context_utilization(self) -> float:
         """Return the latest request size as a fraction of the safe context window."""
@@ -323,7 +357,7 @@ class Agent:
             model=self.model,
             max_tokens=2048,
             system=self.system_prompt,
-            messages=compact_messages,
+            messages=self._normalize_messages(compact_messages),
             tools=tool_definitions,
         )
 
@@ -338,6 +372,7 @@ class Agent:
             if getattr(block, "type", None) == "text"
         ]
         summary = "\n".join(summary_parts).strip() or "(empty summary)"
+        self.global_summary = summary
         latest_user = self._latest_user_text_message()
 
         self.messages = [
@@ -442,7 +477,7 @@ class Agent:
 
                     self._confirmed_commands.add(message)
 
-            result = execute_tool(block.name, block.input)
+            result = execute_tool(block.name, block.input, self._read_file_state)
             print_tool_result(block.name, result)
             results.append(
                 {
@@ -460,9 +495,9 @@ class Agent:
         async def operation() -> Any:
             async with self.client.messages.stream(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 system=self.system_prompt,
-                messages=self.messages,
+                messages=self._normalize_messages(),
                 tools=tool_definitions,
             ) as stream:
                 first_text = True
@@ -481,9 +516,39 @@ class Agent:
                         first_text = False
                     print_assistant_text(text)
 
+                if not first_text:
+                    print_assistant_text("\n")
+
                 return await stream.get_final_message()
 
         return await with_retry(operation)
+
+    def _normalize_messages(
+        self,
+        messages: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Merge consecutive user messages so the API sees alternating roles."""
+        source = messages or self.messages
+        if not source:
+            return []
+
+        normalized: list[dict[str, Any]] = [source[0]]
+        for msg in source[1:]:
+            if msg.get("role") == "user" and normalized[-1].get("role") == "user":
+                previous = normalized[-1].get("content")
+                current = msg.get("content")
+                if isinstance(previous, str):
+                    previous = [{"type": "text", "text": previous}]
+                if isinstance(current, str):
+                    current = [{"type": "text", "text": current}]
+                if isinstance(previous, list) and isinstance(current, list):
+                    normalized[-1] = {"role": "user", "content": previous + current}
+                else:
+                    normalized.append(msg)
+            else:
+                normalized.append(msg)
+
+        return normalized
 
     def clear_history(self) -> None:
         """Clear conversation history and token counters for the current process."""

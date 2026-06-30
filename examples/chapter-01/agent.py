@@ -53,7 +53,7 @@ def run_chat(
         messages.append({"role": "user", "content": user_input})
         response = client.messages.create(
             model=model,
-            max_tokens=4096,
+            max_tokens=8192,
             system=SYSTEM_PROMPT,
             messages=messages,
         )

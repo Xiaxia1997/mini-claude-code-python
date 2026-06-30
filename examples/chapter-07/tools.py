@@ -4,6 +4,7 @@ The regex checks are deliberately simple: they teach where permission gates
 sit in the agent loop without pulling in shell AST parsing.
 """
 
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -237,7 +238,11 @@ def truncate_result(result: str) -> str:
     )
 
 
-def execute_tool(name: str, args: dict[str, Any]) -> str:
+def execute_tool(
+    name: str,
+    args: dict[str, Any],
+    read_file_state: dict[str, float] | None = None,
+) -> str:
     """Dispatch a model tool request to the matching Python function."""
     handlers = {
         "read_file": read_file,
@@ -252,6 +257,39 @@ def execute_tool(name: str, args: dict[str, Any]) -> str:
         return f"Unknown tool: {name}"
 
     try:
-        return truncate_result(handler(**args))
+        if name == "read_file":
+            result = handler(**args)
+            if read_file_state is not None and not result.startswith("Error"):
+                abs_path = os.path.realpath(args["file_path"])
+                read_file_state[abs_path] = os.path.getmtime(abs_path)
+            return truncate_result(result)
+
+        if name in {"write_file", "edit_file"} and read_file_state is not None:
+            abs_path = os.path.realpath(args["file_path"])
+            if os.path.exists(abs_path):
+                if abs_path not in read_file_state:
+                    verb = "writing" if name == "write_file" else "editing"
+                    return (
+                        "Error: You must read this file before "
+                        f"{verb}. Use read_file first."
+                    )
+                if os.path.getmtime(abs_path) != read_file_state[abs_path]:
+                    verb = "writing" if name == "write_file" else "editing"
+                    return (
+                        f"Warning: {args['file_path']} was modified externally "
+                        f"since your last read. Please read_file again before {verb}."
+                    )
+
+        result = handler(**args)
+        if (
+            name in {"write_file", "edit_file"}
+            and read_file_state is not None
+            and not result.startswith("Error")
+        ):
+            abs_path = os.path.realpath(args["file_path"])
+            read_file_state[abs_path] = os.path.getmtime(abs_path)
+        return truncate_result(result)
     except TypeError as exc:
         return f"Error: invalid arguments for {name}: {exc}"
+    except Exception as exc:
+        return f"Error: {exc}"

@@ -1,8 +1,10 @@
 from importlib.util import module_from_spec, spec_from_file_location
 import asyncio
+import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 from types import SimpleNamespace
 
 
@@ -640,6 +642,65 @@ def test_chapter_6_detects_dangerous_commands() -> None:
     }
 
 
+def test_chapter_6_requires_read_before_editing_existing_file(tmp_path: Path) -> None:
+    tools = load_chapter_tools("06")
+    sample = tmp_path / "sample.txt"
+    sample.write_text("alpha", encoding="utf-8")
+    state = {}
+
+    blocked = tools.execute_tool(
+        "edit_file",
+        {
+            "file_path": str(sample),
+            "old_string": "alpha",
+            "new_string": "beta",
+        },
+        state,
+    )
+    assert "must read" in blocked
+    assert sample.read_text(encoding="utf-8") == "alpha"
+
+    assert tools.execute_tool("read_file", {"file_path": str(sample)}, state) == "alpha"
+    assert str(sample.resolve()) in state
+
+    changed = tools.execute_tool(
+        "edit_file",
+        {
+            "file_path": str(sample),
+            "old_string": "alpha",
+            "new_string": "beta",
+        },
+        state,
+    )
+    assert "Successfully edited" in changed
+    assert sample.read_text(encoding="utf-8") == "beta"
+    assert state[str(sample.resolve())] == os.path.getmtime(sample)
+
+
+def test_chapter_6_rejects_stale_read_before_edit(tmp_path: Path) -> None:
+    tools = load_chapter_tools("06")
+    sample = tmp_path / "sample.txt"
+    sample.write_text("alpha", encoding="utf-8")
+    state = {}
+
+    tools.execute_tool("read_file", {"file_path": str(sample)}, state)
+    time.sleep(0.01)
+    sample.write_text("external change", encoding="utf-8")
+
+    result = tools.execute_tool(
+        "edit_file",
+        {
+            "file_path": str(sample),
+            "old_string": "external change",
+            "new_string": "agent change",
+        },
+        state,
+    )
+
+    assert "modified externally" in result
+    assert sample.read_text(encoding="utf-8") == "external change"
+
+
 def test_chapter_7_budgets_old_tool_results(monkeypatch) -> None:
     agent_module = load_chapter_agent("07")
     monkeypatch.setattr(
@@ -672,6 +733,39 @@ def test_chapter_7_budgets_old_tool_results(monkeypatch) -> None:
     assert "budgeted" in content
 
 
+def test_chapter_7_microcompact_clears_old_tool_results(monkeypatch) -> None:
+    agent_module = load_chapter_agent("07")
+    monkeypatch.setattr(
+        agent_module.anthropic,
+        "AsyncAnthropic",
+        lambda **kwargs: SimpleNamespace(messages=SimpleNamespace()),
+    )
+    monkeypatch.setattr(agent_module, "build_system_prompt", lambda: "SYSTEM")
+
+    agent = agent_module.Agent(api_key="test-key", base_url=None)
+    agent.last_api_call_time = 0
+    agent.messages = []
+    for index in range(7):
+        agent.messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": f"toolu_{index}",
+                        "content": f"result {index}",
+                    }
+                ],
+            }
+        )
+
+    agent._microcompact_tool_results()
+
+    contents = [msg["content"][0]["content"] for msg in agent.messages]
+    assert contents[:2] == [agent_module.OLD_TOOL_RESULT_PLACEHOLDER] * 2
+    assert contents[2:] == [f"result {index}" for index in range(2, 7)]
+
+
 def test_chapter_7_snips_stale_duplicate_tool_results(monkeypatch) -> None:
     agent_module = load_chapter_agent("07")
     monkeypatch.setattr(
@@ -684,55 +778,38 @@ def test_chapter_7_snips_stale_duplicate_tool_results(monkeypatch) -> None:
     agent = agent_module.Agent(api_key="test-key", base_url=None)
     agent.effective_window = 100
     agent.last_input_token_count = 70
-    agent.messages = [
-        {
-            "role": "assistant",
-            "content": [
+    agent.messages = []
+    for label in ("old", "mid1", "mid2", "new"):
+        agent.messages.extend(
+            [
                 {
-                    "type": "tool_use",
-                    "id": "toolu_old",
-                    "name": "read_file",
-                    "input": {"file_path": "agent.py"},
-                }
-            ],
-        },
-        {
-            "role": "user",
-            "content": [
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": f"toolu_{label}",
+                            "name": "read_file",
+                            "input": {"file_path": "agent.py"},
+                        }
+                    ],
+                },
                 {
-                    "type": "tool_result",
-                    "tool_use_id": "toolu_old",
-                    "content": "old content",
-                }
-            ],
-        },
-        {
-            "role": "assistant",
-            "content": [
-                {
-                    "type": "tool_use",
-                    "id": "toolu_new",
-                    "name": "read_file",
-                    "input": {"file_path": "agent.py"},
-                }
-            ],
-        },
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": "toolu_new",
-                    "content": "new content",
-                }
-            ],
-        },
-    ]
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": f"toolu_{label}",
+                            "content": f"{label} content",
+                        }
+                    ],
+                },
+            ]
+        )
 
     agent._snip_stale_results()
 
     assert "snipped" in agent.messages[1]["content"][0]["content"]
-    assert agent.messages[3]["content"][0]["content"] == "new content"
+    assert agent.messages[-1]["content"][0]["content"] == "new content"
 
 
 def test_chapter_7_compact_reuses_agent_system_prompt(monkeypatch) -> None:

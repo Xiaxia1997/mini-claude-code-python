@@ -141,6 +141,7 @@ class Agent:
         self.total_output_tokens = 0
         self.yolo = yolo
         self._confirmed_commands: set[str] = set()
+        self._read_file_state: dict[str, float] = {}
         self.session_id = uuid.uuid4().hex[:8]
         self.session_start_time = time.strftime(
             "%Y-%m-%dT%H:%M:%SZ",
@@ -223,7 +224,7 @@ class Agent:
 
                     self._confirmed_commands.add(message)
 
-            result = execute_tool(block.name, block.input)
+            result = execute_tool(block.name, block.input, self._read_file_state)
             print_tool_result(block.name, result)
             results.append(
                 {
@@ -241,7 +242,7 @@ class Agent:
         async def operation() -> Any:
             async with self.client.messages.stream(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 system=self.system_prompt,
                 messages=self.messages,
                 tools=tool_definitions,
@@ -261,6 +262,9 @@ class Agent:
                         print_assistant_text("\n")
                         first_text = False
                     print_assistant_text(text)
+
+                if not first_text:
+                    print_assistant_text("\n")
 
                 return await stream.get_final_message()
 

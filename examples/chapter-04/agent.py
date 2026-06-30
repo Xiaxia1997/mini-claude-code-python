@@ -121,7 +121,7 @@ class Agent:
         while True:
             response = await self.client.messages.create(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 system=self.system_prompt,
                 messages=self.messages,
                 tools=tool_definitions,

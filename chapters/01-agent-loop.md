@@ -69,7 +69,7 @@ client = anthropic.Anthropic()
 
 response = client.messages.create(
     model="claude-sonnet-4.6",          # DeepSeek 会自动映射到 deepseek-v4-flash
-    max_tokens=4096,
+    max_tokens=8192,
     system="你是一个有帮助的助手",       # system prompt 是单独的参数
     messages=[
         {"role": "user", "content": "你好"}
@@ -184,7 +184,7 @@ while True:
 
     response = client.messages.create(
         model="claude-sonnet-4.6",
-        max_tokens=4096,
+        max_tokens=8192,
         system="你是一个有帮助的助手",
         messages=messages,
     )

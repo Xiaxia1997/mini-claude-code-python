@@ -313,6 +313,48 @@ print(check_permission("write_file", {"file_path": "x.py", "content": "hi"}))
 
 ---
 
+## Step 3.5：读前编辑保护 — 防止覆盖外部改动
+
+> 文件：`tools.py`、`agent.py`
+
+`check_permission()` 解决的是“这个工具能不能执行”。但还有一个更细的问题：`edit_file` 或覆盖已有文件前，Agent 看到的文件内容是不是最新的？
+
+如果 Agent 先读了 `app.py`，用户又在编辑器里改了 `app.py`，这时 Agent 继续按旧内容执行 `edit_file`，就可能覆盖用户刚写的新内容。
+
+所以这里补一个保护：
+
+```text
+read_file 成功
+  -> 记录这个文件当前 mtime
+
+write_file / edit_file 写已有文件前
+  -> 没读过：拒绝，让模型先 read_file
+  -> 读过但 mtime 变了：拒绝，让模型重新 read_file
+  -> 读过且没变：允许写入，写完更新 mtime
+```
+
+`mtime` 是文件最后修改时间。我们把它当成一个“文件版本号”：读文件时记下来，写文件前再比一次。
+
+在 `Agent.__init__()` 里保存一个读取状态：
+
+```python
+self._read_file_state = {}
+```
+
+执行工具时传给 `execute_tool()`：
+
+```python
+result = execute_tool(block.name, block.input, self._read_file_state)
+```
+
+`tools.py` 里，`execute_tool()` 会在 `read_file` 成功后记录真实路径的 `mtime`；在 `write_file` / `edit_file` 写已有文件前，先检查这个文件是否读过、读完之后有没有被外部改动。
+
+这段逻辑只影响已有文件。`write_file` 创建新文件时，路径还不存在，不需要先读。
+
+为什么用 `os.path.realpath()`，不是只用 `file_path` 原字符串？因为同一个文件可能用相对路径、绝对路径或符号链接路径表示。统一成真实路径后，`./app.py` 和 `/full/path/app.py` 才会落到同一个 key。
+
+---
+
 ## Step 4：写确认对话框 `print_confirmation()`
 
 > 文件：`ui.py`（添加）
@@ -449,7 +491,7 @@ elif block.type == "tool_use":
             self._confirmed_commands.add(msg)
 
     # --- 正常执行 ---
-    result = execute_tool(block.name, block.input)
+    result = execute_tool(block.name, block.input, self._read_file_state)
     print_tool_result(block.name, result)
     tool_results.append({
         "type": "tool_result",
@@ -461,6 +503,8 @@ elif block.type == "tool_use":
 **如果你还在用 while 循环版本（Ch2 版本），同样的逻辑：**
 
 ```python
+read_file_state = {}
+
 elif block.type == "tool_use":
     assistant_content.append({
         "type": "tool_use", "id": block.id,
@@ -493,7 +537,7 @@ elif block.type == "tool_use":
                 continue
             confirmed_commands.add(msg)
 
-    result = execute_tool(block.name, block.input)
+    result = execute_tool(block.name, block.input, read_file_state)
     tool_results.append({
         "type": "tool_result",
         "tool_use_id": block.id,
@@ -940,7 +984,7 @@ class Agent:
                                 continue
                             self._confirmed_commands.add(msg)
 
-                    result = execute_tool(block.name, block.input)
+                    result = execute_tool(block.name, block.input, self._read_file_state)
                     print_tool_result(block.name, result)
                     tool_results.append({
                         "type": "tool_result",
@@ -969,6 +1013,7 @@ class Agent:
 - [ ] `tools.py`：`is_dangerous("rm -rf /")` 返回 `True`，`is_dangerous("ls")` 返回 `False`
 - [ ] `tools.py`：`check_permission("read_file", ...)` 返回 `{"action": "allow"}`
 - [ ] `tools.py`：`check_permission("run_shell", {"command": "rm -rf /"})` 返回 `{"action": "confirm", ...}`
+- [ ] `tools.py`：已有文件必须先 `read_file`，且文件被外部改动后会拒绝写入
 - [ ] `ui.py`：`print_confirmation()` 能显示红色警告 + 黄色命令
 - [ ] `agent.py`：危险命令弹出确认，输入 `n` 后模型收到拒绝消息并调整策略
 - [ ] `agent.py`：安全命令（`ls`、`read_file`）直接执行不弹确认

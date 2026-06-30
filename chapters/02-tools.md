@@ -222,7 +222,7 @@ from tools import tool_definitions, read_file
 ```python
 response = client.messages.create(
     model="claude-sonnet-4.6",
-    max_tokens=4096,
+    max_tokens=8192,
     system="You are a helpful assistant",
     messages=context,
     tools=tool_definitions,
@@ -428,7 +428,7 @@ while True:
     while True:
         response = client.messages.create(
             model="claude-sonnet-4.6",
-            max_tokens=4096,
+            max_tokens=8192,
             system="You are a helpful assistant",
             messages=context,
             tools=tool_definitions,
@@ -823,7 +823,7 @@ while True:
     while True:
         response = client.messages.create(
             model="claude-sonnet-4.6",
-            max_tokens=4096,
+            max_tokens=8192,
             system="You are a helpful assistant",
             messages=context,
             tools=tool_definitions,

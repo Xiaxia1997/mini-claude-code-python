@@ -25,12 +25,14 @@ Layer 3（Compact）→ 窗口真的满了，用 LLM 把整段对话压缩成摘
 
 每层比上一层更激进，但也更贵（Layer 3 要额外花一次 API 调用）。总是先尝试便宜的手段，不够了才升级。
 
+本章还会额外实现一个 **Microcompact**：如果会话空闲超过 5 分钟，就把更早的 `tool_result` 正文清空，只保留最近几个结果和工具调用骨架。它对应 Claude Code 里更缓存敏感的 microcompact 思路；我们做的是入门版的 time-based 本地清理。
+
 ### 文件分工更新
 
 | 文件 | 本章改动 |
 |---|---|
 | `tools.py` | 不变（`_truncate_result()` 已在 Ch2 实现） |
-| `agent.py` | 新增利用率计算 + Layer 1/2/3 压缩方法 + `/compact` 命令 |
+| `agent.py` | 新增利用率计算 + Budget/Snip + Microcompact + `/compact` 命令 |
 
 参考代码：
 
@@ -480,6 +482,41 @@ latest_occurrence[key] = (msg_idx, block_idx)
 
 ---
 
+## Microcompact：空闲后清理旧工具结果
+
+Budget 和 Snip 都是“上下文挤了才动”。Microcompact 的触发条件不看利用率，而是看时间：如果距离上次 API 调用已经超过 5 分钟，默认 prompt cache 已经冷了，这时再修改本地历史，对热缓存的伤害就小很多。
+
+本章的简化版做法是：
+
+```text
+API 调用前
+  -> 如果 last_api_call_time 为空：不动
+  -> 如果距离上次 API 调用 < 5 分钟：不动
+  -> 如果已经空闲超过 5 分钟：
+       保留最近 5 个 tool_result
+       更早的 tool_result.content 替换成 "[Old tool result content cleared]"
+```
+
+注意它仍然只改 `content`，不删除 `tool_result` 块。这样 `assistant: tool_use` 和 `user: tool_result` 的配对关系还在，API 不会因为工具调用配对断裂而报错。
+
+代码上就是在 `chat()` 的 while 循环里，每次 API 调用前先跑：
+
+```python
+while True:
+    self._microcompact_tool_results()
+    self._run_compression_pipeline()
+    await self._check_and_compact()
+    response = await self._call_stream()
+```
+
+顺序含义：
+
+1. **Microcompact**：如果缓存大概率已经冷了，先清旧工具结果正文。
+2. **Budget / Snip**：再根据当前上下文利用率做动态裁剪和重复结果去重。
+3. **Compact**：如果窗口已经接近上限，最后调用 LLM 摘要整段历史。
+
+---
+
 ## Layer 3：Auto-compact — LLM 摘要压缩
 
 > 文件：`agent.py`
@@ -599,9 +636,9 @@ messages = [
 
 > 文件：`agent.py`
 
-4 层已经各自实现了。现在把它们串起来，在正确的时机执行。
+这些压缩步骤已经各自实现了。现在把它们串起来，在正确的时机执行。
 
-### 压缩管道：Layer 1-2 在每次 API 调用前
+### 压缩管道：Microcompact + Layer 1-2 在每次 API 调用前
 
 ```python
 def _run_compression_pipeline(self):
@@ -614,43 +651,35 @@ def _run_compression_pipeline(self):
 1. **先 Budget 再 Snip**：Budget 先把大结果压小，Snip 再来判断哪些是重复的。如果反过来，Snip 可能会保留一个 30K 的"最新"结果不动，Budget 再去处理时效率降低
 2. **两层都是零成本的**：只是字符串操作，不调 API，每次执行都很快
 
-### 自动压缩检查：Layer 3 在 turn boundary
+### 自动压缩检查：Layer 3 在每次 API 调用前
 
 ```python
 async def _check_and_compact(self):
-    """在 turn boundary 检查是否需要 Layer 3 全量摘要"""
+    """每次 API 调用前检查是否需要 Layer 3 全量摘要"""
     if self.last_input_token_count > self.effective_window * 0.85:
         print_info("Context window filling up, compacting conversation...")
         await self._compact_conversation()
 ```
 
-### 什么是 turn boundary
+### 为什么检查放在 API 调用前
 
 ```text
 用户输入 "帮我改个 bug"
     ↓
-context.append(用户消息)     ← turn boundary 在这里
-    ↓
-_check_and_compact()         ← 在这里检查是否需要 Layer 3
+context.append(用户消息)
     ↓
 while True:                  ← 进入工具循环
+    _microcompact_tool_results()  ← 空闲超过 5 分钟时清旧工具结果
     _run_compression_pipeline()  ← 每次 API 调用前做 Layer 1-2
+    _check_and_compact()         ← 检查是否需要 Layer 3
     API 调用
     处理工具...
     如果没有工具调用 → break
 ```
 
-**Layer 3 必须在 turn boundary 调用，绝对不能在工具循环中间调用。**原因：
+为什么不只在 `chat()` 开头检查？因为一轮工具循环里可能连续读多个大文件，真正撑爆窗口的不是用户输入本身，而是中间产生的一堆 `tool_result`。把检查放在每次 API 调用前，可以在工具循环中间也及时 compact。
 
-`_compact_conversation()` 会把 `self.messages[-1]` 当作"最新的用户文本消息"保留。在 turn boundary，最后一条确实是 `{"role": "user", "content": "帮我改个 bug"}`。
-
-但在工具循环中间，最后一条是 `{"role": "user", "content": [{"type": "tool_result", ...}]}`。如果这时执行压缩：
-
-1. 摘要会把 `context[:-1]` 全部压缩——但 `context[-2]` 是 assistant 的 `tool_use`
-2. 压缩后，这条 `tool_use` 消失了，但 `tool_result` 还在
-3. API 看到 `tool_result` 但找不到配对的 `tool_use`，直接报错
-
-这就是为什么叫"turn boundary 契约"——只在用户输入推入消息之后、工具循环开始之前调用。
+本章的 `_compact_conversation()` 是全量替换历史，不做“从中间切一刀”的 partial compact，所以不会留下孤立的 `tool_use` / `tool_result` 半截配对。更复杂的部分切割需要额外的 `ensureToolResultPairing()`，这里先不做。
 
 ### 接入 chat() 方法
 
@@ -664,12 +693,15 @@ async def chat(self, user_input):
         "content": [{"type": "text", "text": user_input}],
     })
 
-    # ── turn boundary: 检查是否需要 auto-compact ──
-    await self._check_and_compact()
-
     while True:
+        # ── 空闲后：清理更早的 tool_result 正文 ──
+        self._microcompact_tool_results()
+
         # ── 每次 API 调用前：执行 Layer 1-2 压缩 ──
         self._run_compression_pipeline()
+
+        # ── 每次 API 调用前：检查是否需要 Layer 3 摘要 ──
+        await self._check_and_compact()
 
         response = await self._call_stream()
 
@@ -785,14 +817,16 @@ if self.last_input_token_count > self.effective_window * 0.20:  # 改成 20% 方
 
 ---
 
-## 回头看：4 层压缩的分工
+## 回头看：压缩流水线的分工
 
 ```text
-工具执行                API 调用前               Turn boundary
+工具执行                API 调用前                API 调用前
     |                       |                        |
     v                       v                        v
-Layer 0: 截断          Layer 1: Budget            Layer 3: Auto-compact
-（50K 硬限制）        （30K/15K 动态预算）       （LLM 摘要，最后手段）
+Layer 0: 截断          Microcompact              Layer 3: Auto-compact
+（50K 硬限制）        （空闲后清旧结果）        （LLM 摘要，最后手段）
+                       Layer 1: Budget
+                      （30K/15K 动态预算）
                        Layer 2: Snip
                       （去重，占位符替换）
 ```
@@ -802,6 +836,7 @@ Layer 0: 截断          Layer 1: Budget            Layer 3: Auto-compact
 | Layer | 触发条件 | 直接成本 | 缓存代价 | 压缩力度 |
 |---|---|---|---|---|
 | 0 截断 | 工具结果 > 50K 字符 | 零 | 无（执行时截断，还没进入消息历史） | 单个结果 |
+| Microcompact | 空闲 > 5 分钟 | 零 | 较低：默认缓存已冷 | 旧 tool_result 正文 |
 | 1 Budget | 利用率 > 50% | 零 | 有：被改的消息及之后的缓存失效 | 所有旧 tool_result |
 | 2 Snip | 利用率 > 60% | 零 | 有：被改的消息及之后的缓存失效 | 重复的 tool_result |
 | 3 Compact | 利用率 > 85% | 1 次 API 调用 | 大：整个消息历史被替换，缓存全部失效 | 整个对话历史 |
@@ -1013,9 +1048,10 @@ class Agent:
 - [ ] `agent.py`：每次 API 调用后更新 token 统计和时间戳
 - [ ] `agent.py`：`_budget_tool_results()` 根据利用率动态截断旧 tool_result
 - [ ] `agent.py`：`_snip_stale_results()` 去重同文件读取，保留最近 3 个
+- [ ] `agent.py`：`_microcompact_tool_results()` 空闲 5 分钟后清理更早的 tool_result 正文
 - [ ] `agent.py`：`_compact_conversation()` 能调 LLM 生成摘要并替换历史
 - [ ] `agent.py`：`_run_compression_pipeline()` 在每次 API 调用前执行
-- [ ] `agent.py`：`_check_and_compact()` 只在 turn boundary 执行
+- [ ] `agent.py`：`_check_and_compact()` 在每次 API 调用前执行
 - [ ] REPL 支持 `/compact` 命令
 - [ ] 长对话后能看到压缩触发的提示
 
@@ -1025,7 +1061,6 @@ class Agent:
 
 | 省略内容 | 原因 | 补回章节 | 对齐参考实现的哪个能力 |
 |---|---|---|---|
-| Microcompact（缓存冷启动清理） | 需要理解 prompt cache 的 TTL 机制，且本地测试难以观察效果 | 可作为本章进阶练习 | `agent.py` 的 `_microcompact_anthropic()` |
 | 大结果持久化到磁盘 | 需要文件系统管理 + 路径约定，当前截断已够用 | 按需补入 | 参考实现的 `persistLargeResult()` |
 | Token 估算（锚点 + 字符数 / 4） | 直接用 API 返回的 `usage` 已经够准 | 当需要在 API 调用前精确预判时 | Claude Code 的 anchor + estimate |
 | Prompt cache 感知 | DeepSeek 有自动 Context Caching，但 Anthropic 兼容接口会忽略 `cache_control`，本章先不做缓存断点控制 | 使用 Anthropic 原生 API 或需要优化 DeepSeek 缓存命中时 | Claude Code 的缓存断点管理 |
@@ -1038,15 +1073,15 @@ class Agent:
 
 > 以下对照参考实现 `python/mini_claude/` 和原始文档 `docs/07-context.md`，第一遍可以跳过。
 
-### 5 级 vs 4 层
+### 5 级 vs 入门版压缩流水线
 
-Claude Code 有 5 级压缩流水线，我们简化成了 4 层：
+Claude Code 有 5 级压缩流水线，我们保留了最容易写清楚、跑起来也最有感知的几步：
 
 | Claude Code | 我们 | 区别 |
 |---|---|---|
 | Level 1: 预算裁剪 + 磁盘持久化 | Layer 0+1: 截断 + Budget | Claude Code 对 >30KB 结果先存磁盘再给预览，我们直接截断 |
 | Level 2: History Snip | Layer 2: Snip | 基本一致 |
-| Level 3: Microcompact | 省略 | Claude Code 分两条路径（缓存冷/热），我们只实现了时间触发版 |
+| Level 3: Microcompact | 时间触发版 Microcompact | Claude Code 缓存热时可用 `cache_edits`，我们只做缓存冷后的本地清理 |
 | Level 4: Context Collapse | 省略 | 投影式折叠，不修改原始消息，类似数据库 View |
 | Level 5: Autocompact | Layer 3: Compact | Claude Code 用两阶段摘要 + 熔断器，我们用单段摘要 |
 
@@ -1111,11 +1146,11 @@ Claude Code 的 auto-compact 用一个巧妙的提示词结构：
 
 | 维度 | 原版（参考实现） | 入门版 |
 |---|---|---|
-| 压缩层级 | 4 层（budget + snip + microcompact + compact） | 4 层（截断 + budget + snip + compact） |
+| 压缩层级 | 多级流水线（budget + snip + microcompact + compact） | 多级流水线（截断 + budget + snip + microcompact + compact） |
 | Token 计数 | API 返回值 | API 返回值 |
 | Budget 触发 | 50%/70% 双阈值 | 50%/70% 双阈值 |
 | Snip 策略 | 同文件去重 + 保留最近 3 个 | 同文件去重 + 保留最近 3 个 |
-| Microcompact | 5 分钟空闲触发 | 省略（可作为练习补回） |
+| Microcompact | 5 分钟空闲触发；缓存热时可走 `cache_edits` | 5 分钟空闲触发；只做本地清理 |
 | Auto-compact | 单段摘要 | 单段摘要 |
 | 大结果持久化 | 磁盘持久化（>30KB） | 省略（直接截断） |
 | 手动压缩 | `/compact` 命令 | `/compact` 命令 |
